@@ -523,7 +523,6 @@ export default function App(){
 
   return(
     <>
-      <style>{GLOBAL_CSS}</style>
       <div style={{minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,-apple-system,sans-serif"}}>
         <div style={{width:"100%",maxWidth:430,position:"relative"}}>
           <div style={{minHeight:"100vh",padding:"28px 16px 96px",overflowX:"hidden"}}>
