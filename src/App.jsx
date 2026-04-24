@@ -1,97 +1,88 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
-  TrendingUp, Award, Bell, Coffee, X, Edit3,
-  Battery, Wind, ChevronRight
+  TrendingUp, Award, Bell, Coffee, X, Battery,
+  Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff
 } from "lucide-react";
+import { supabase } from "./lib/supabase";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   THEME — Midnight Dark × Electric Violet × Coral
-   Best for 18–35: premium, focused, high-contrast, not corporate
-───────────────────────────────────────────────────────────────────────────── */
+/* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
-  bg0:   "#09090F",
-  bg1:   "#111118",
-  bg2:   "#18181F",
-  bg3:   "#202028",
-  border: "rgba(255,255,255,0.07)",
-  text1: "#F0EFF8",
-  text2: "#8B8A9E",
-  text3: "#4A4960",
-  violet:     "#7C3AED",
-  violetMid:  "#8B5CF6",
-  violetSoft: "rgba(124,58,237,0.14)",
-  violetGlow: "rgba(124,58,237,0.38)",
-  coral:      "#F97316",
-  coralSoft:  "rgba(249,115,22,0.12)",
-  green:      "#10B981",
-  greenSoft:  "rgba(16,185,129,0.12)",
-  amber:      "#F59E0B",
-  amberSoft:  "rgba(245,158,11,0.12)",
-  red:        "#EF4444",
-  redSoft:    "rgba(239,68,68,0.12)",
-  gradViolet: "linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%)",
-  gradHero:   "linear-gradient(135deg,#7C3AED 0%,#9333EA 60%,#F97316 100%)",
+  bg0:"#09090F", bg1:"#111118", bg2:"#18181F", bg3:"#202028",
+  border:"rgba(255,255,255,0.07)",
+  text1:"#F0EFF8", text2:"#8B8A9E", text3:"#4A4960",
+  violet:"#7C3AED", violetMid:"#8B5CF6",
+  violetSoft:"rgba(124,58,237,0.14)", violetGlow:"rgba(124,58,237,0.38)",
+  coral:"#F97316", coralSoft:"rgba(249,115,22,0.12)",
+  green:"#10B981", greenSoft:"rgba(16,185,129,0.12)",
+  amber:"#F59E0B", amberSoft:"rgba(245,158,11,0.12)",
+  red:"#EF4444", redSoft:"rgba(239,68,68,0.12)",
+  gradViolet:"linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%)",
+  gradHero:"linear-gradient(135deg,#7C3AED 0%,#9333EA 60%,#F97316 100%)",
 };
 
 const TAG_META = {
-  work:     { bg:"rgba(139,92,246,0.14)", text:"#A78BFA", dot:"#8B5CF6" },
-  comms:    { bg:"rgba(59,130,246,0.14)", text:"#93C5FD", dot:"#60A5FA" },
-  wellness: { bg:"rgba(16,185,129,0.14)", text:"#6EE7B7", dot:"#10B981" },
-  growth:   { bg:"rgba(245,158,11,0.14)", text:"#FCD34D", dot:"#F59E0B" },
-};
-
-const INITIAL_TASKS = {
-  morning: [
-    { id:1, title:"Review sprint goals",    done:true,  duration:15, tag:"work"    },
-    { id:2, title:"Reply to team messages", done:false, duration:20, tag:"comms"   },
-    { id:3, title:"Morning journal entry",  done:false, duration:10, tag:"wellness"},
-  ],
-  afternoon: [
-    { id:4, title:"Deep work: feature build", done:false, duration:90, tag:"work"    },
-    { id:5, title:"Team standup call",        done:false, duration:30, tag:"comms"   },
-    { id:6, title:"Lunch walk",               done:true,  duration:20, tag:"wellness"},
-  ],
-  evening: [
-    { id:7, title:"Plan tomorrow", done:false, duration:15, tag:"work"  },
-    { id:8, title:"Read 30 min",   done:false, duration:30, tag:"growth"},
-  ],
+  work:    {bg:"rgba(139,92,246,0.14)",text:"#A78BFA",dot:"#8B5CF6"},
+  comms:   {bg:"rgba(59,130,246,0.14)",text:"#93C5FD",dot:"#60A5FA"},
+  wellness:{bg:"rgba(16,185,129,0.14)",text:"#6EE7B7",dot:"#10B981"},
+  growth:  {bg:"rgba(245,158,11,0.14)",text:"#FCD34D",dot:"#F59E0B"},
 };
 
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-  body{background:${T.bg0};}
+  body{background:#09090F;}
   ::-webkit-scrollbar{display:none;}
   input,select{color-scheme:dark;font-family:Outfit,sans-serif;}
-  input[type=range]{accent-color:${T.violetMid};}
+  input[type=range]{accent-color:#8B5CF6;}
   @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
   @keyframes slideUp{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
   @keyframes backdropIn{from{opacity:0}to{opacity:1}}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 `;
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
-const getMomentum = t => { const a=Object.values(t).flat(); return a.length?Math.round(a.filter(x=>x.done).length/a.length*100):0; };
-const getNext = t => { for(const s of["morning","afternoon","evening"]){const x=t[s].find(x=>!x.done);if(x)return{...x,section:s};}return null; };
+const groupBySection = (rows) => {
+  const g = { morning:[], afternoon:[], evening:[] };
+  rows.forEach(r => { if(g[r.section]) g[r.section].push(r); });
+  return g;
+};
+const flatTasks = (tasks) => Object.values(tasks).flat();
+const getMomentum = (tasks) => {
+  const all = flatTasks(tasks);
+  return all.length ? Math.round(all.filter(t=>t.done).length/all.length*100) : 0;
+};
+const getNext = (tasks) => {
+  for(const s of["morning","afternoon","evening"]){
+    const t = tasks[s]?.find(t=>!t.done);
+    if(t) return {...t, section:s};
+  }
+  return null;
+};
 const now = new Date();
 const greeting = now.getHours()<12?"Good morning":now.getHours()<17?"Good afternoon":"Good evening";
 const dateStr = now.toLocaleDateString("en-IN",{weekday:"long",month:"long",day:"numeric"});
 
 /* ─── Atoms ───────────────────────────────────────────────────────────────── */
+function Spinner() {
+  return (
+    <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${T.violetSoft}`,borderTopColor:T.violetMid,animation:"spin 0.7s linear infinite"}}/>
+  );
+}
+
 function Badge({tag}){
   const m=TAG_META[tag]||{bg:T.bg3,text:T.text2,dot:T.text3};
   return(
     <span style={{fontSize:10,fontWeight:700,letterSpacing:"0.05em",padding:"3px 9px",borderRadius:99,background:m.bg,color:m.text,display:"inline-flex",alignItems:"center",gap:4,textTransform:"uppercase"}}>
-      <span style={{width:4,height:4,borderRadius:"50%",background:m.dot,flexShrink:0}}/>
-      {tag}
+      <span style={{width:4,height:4,borderRadius:"50%",background:m.dot,flexShrink:0}}/>{tag}
     </span>
   );
 }
 
-function Card({children,style={},glow=false}){
+function Card({children,style={}}){
   return(
-    <div style={{background:T.bg1,borderRadius:20,border:`1px solid ${T.border}`,padding:"18px",marginBottom:12,position:"relative",overflow:"hidden",...(glow&&{boxShadow:`0 0 0 1px ${T.violetGlow},0 8px 32px ${T.violetGlow}`}),...style}}>
+    <div style={{background:T.bg1,borderRadius:20,border:`1px solid ${T.border}`,padding:"18px",marginBottom:12,position:"relative",overflow:"hidden",...style}}>
       {children}
     </div>
   );
@@ -116,25 +107,150 @@ function StatCard({label,value,icon:Icon,color,soft}){
   );
 }
 
-/* ─── TaskRow ─────────────────────────────────────────────────────────────── */
-function TaskRow({task,onToggle,compact=false}){
-  const[pressed,setPressed]=useState(false);
+/* ─── AUTH SCREEN ─────────────────────────────────────────────────────────── */
+function AuthScreen({onAuth}){
+  const[mode,setMode]=useState("login"); // "login" | "signup"
+  const[email,setEmail]=useState("");
+  const[password,setPassword]=useState("");
+  const[showPw,setShowPw]=useState(false);
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+
+  const iStyle={
+    width:"100%",background:T.bg2,border:`1px solid ${T.border}`,
+    borderRadius:14,padding:"14px 44px 14px 44px",
+    fontSize:15,color:T.text1,outline:"none",
+    fontFamily:"Outfit,sans-serif",transition:"border 0.2s",
+  };
+
+  const handleSubmit = async () => {
+    if(!email.trim()||!password.trim()){setError("Please fill in all fields.");return;}
+    if(password.length<6){setError("Password must be at least 6 characters.");return;}
+    setLoading(true); setError("");
+    try {
+      let result;
+      if(mode==="login"){
+        result = await supabase.auth.signInWithPassword({email,password});
+      } else {
+        result = await supabase.auth.signUp({email,password});
+      }
+      if(result.error) setError(result.error.message);
+      else if(mode==="signup"&&!result.data.session){
+        setError("Check your email for a confirmation link!");
+      } else {
+        onAuth(result.data.session);
+      }
+    } catch(e){
+      setError("Something went wrong. Try again.");
+    }
+    setLoading(false);
+  };
+
   return(
-    <div onClick={()=>onToggle(task.id)} onMouseDown={()=>setPressed(true)} onMouseUp={()=>setPressed(false)} onTouchStart={()=>setPressed(true)} onTouchEnd={()=>setPressed(false)}
-      style={{display:"flex",alignItems:"center",gap:12,padding:compact?"10px 0":"13px 0",borderBottom:`1px solid ${T.border}`,cursor:"pointer",opacity:task.done?0.38:1,transform:pressed?"scale(0.985)":"scale(1)",transition:"all 0.15s ease"}}>
-      <div style={{width:22,height:22,borderRadius:7,flexShrink:0,border:task.done?"none":`1.5px solid ${T.text3}`,background:task.done?T.gradViolet:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
-        {task.done&&<CheckCircle size={13} color="#fff" strokeWidth={2.5}/>}
+    <div style={{minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,sans-serif"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{width:"100%",maxWidth:430,padding:"60px 24px 40px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:40}}>
+          <div style={{width:64,height:64,borderRadius:20,background:T.gradViolet,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",boxShadow:`0 12px 32px ${T.violetGlow}`}}>
+            <Zap size={30} color="#fff" strokeWidth={2.5}/>
+          </div>
+          <h1 style={{fontSize:28,fontWeight:800,color:T.text1,letterSpacing:"-0.8px"}}>Day Copilot</h1>
+          <p style={{fontSize:14,color:T.text2,marginTop:6}}>Your smart task execution companion</p>
+        </div>
+
+        {/* Mode toggle */}
+        <div style={{display:"flex",background:T.bg2,borderRadius:14,padding:4,marginBottom:24,border:`1px solid ${T.border}`}}>
+          {[{key:"login",label:"Sign In"},{key:"signup",label:"Create Account"}].map(({key,label})=>(
+            <button key={key} onClick={()=>{setMode(key);setError("");}} style={{flex:1,padding:"10px",borderRadius:11,border:"none",cursor:"pointer",transition:"all 0.2s",background:mode===key?T.bg1:"transparent",color:mode===key?T.text1:T.text3,fontSize:14,fontWeight:mode===key?700:500,boxShadow:mode===key?`0 2px 8px rgba(0,0,0,0.3)`:"none"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Form */}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Email */}
+          <div style={{position:"relative"}}>
+            <Mail size={16} color={T.text3} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}/>
+            <input
+              type="email" placeholder="Email address" value={email}
+              onChange={e=>setEmail(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+              style={iStyle}
+              onFocus={e=>e.target.style.borderColor=T.violetMid}
+              onBlur={e=>e.target.style.borderColor=T.border}
+            />
+          </div>
+
+          {/* Password */}
+          <div style={{position:"relative"}}>
+            <Lock size={16} color={T.text3} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}/>
+            <input
+              type={showPw?"text":"password"} placeholder="Password (min 6 chars)" value={password}
+              onChange={e=>setPassword(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+              style={iStyle}
+              onFocus={e=>e.target.style.borderColor=T.violetMid}
+              onBlur={e=>e.target.style.borderColor=T.border}
+            />
+            <button onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",cursor:"pointer",display:"flex",alignItems:"center"}}>
+              {showPw?<EyeOff size={16} color={T.text3}/>:<Eye size={16} color={T.text3}/>}
+            </button>
+          </div>
+
+          {/* Error */}
+          {error&&(
+            <div style={{background:T.redSoft,border:`1px solid ${T.red}33`,borderRadius:12,padding:"10px 14px"}}>
+              <p style={{fontSize:13,color:T.red,fontWeight:500}}>{error}</p>
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{border:"none",borderRadius:16,padding:"15px",background:T.gradViolet,color:"#fff",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",transition:"all 0.2s",boxShadow:`0 8px 24px ${T.violetGlow}`,display:"flex",alignItems:"center",justifyContent:"center",gap:10,opacity:loading?0.8:1,marginTop:4}}>
+            {loading&&<Spinner/>}
+            {loading?"Please wait...":(mode==="login"?"Sign In →":"Create Account →")}
+          </button>
+        </div>
+
+        <p style={{textAlign:"center",fontSize:12,color:T.text3,marginTop:32}}>
+          Your data is private and encrypted.
+        </p>
       </div>
-      <div style={{flex:1,minWidth:0}}>
-        <p style={{fontSize:14,fontWeight:500,color:T.text1,textDecoration:task.done?"line-through":"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.4}}>{task.title}</p>
-        {!compact&&<div style={{display:"flex",alignItems:"center",gap:5,marginTop:3}}><Clock size={11} color={T.text3}/><span style={{fontSize:11,color:T.text3}}>{task.duration}m</span></div>}
-      </div>
-      {!compact&&<Badge tag={task.tag}/>}
     </div>
   );
 }
 
-/* ─── MoodSelector ────────────────────────────────────────────────────────── */
+/* ─── TASK ROW ────────────────────────────────────────────────────────────── */
+function TaskRow({task,onToggle,onDelete,compact=false}){
+  const[pressed,setPressed]=useState(false);
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:compact?"10px 0":"13px 0",borderBottom:`1px solid ${T.border}`,opacity:task.done?0.38:1,transform:pressed?"scale(0.985)":"scale(1)",transition:"all 0.15s ease"}}>
+      <div onClick={()=>onToggle(task.id,task.done)} onMouseDown={()=>setPressed(true)} onMouseUp={()=>setPressed(false)} onTouchStart={()=>setPressed(true)} onTouchEnd={()=>setPressed(false)}
+        style={{display:"flex",alignItems:"center",gap:12,flex:1,cursor:"pointer",minWidth:0}}>
+        <div style={{width:22,height:22,borderRadius:7,flexShrink:0,border:task.done?"none":`1.5px solid ${T.text3}`,background:task.done?T.gradViolet:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+          {task.done&&<CheckCircle size={13} color="#fff" strokeWidth={2.5}/>}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:14,fontWeight:500,color:T.text1,textDecoration:task.done?"line-through":"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.4}}>{task.title}</p>
+          {!compact&&<div style={{display:"flex",alignItems:"center",gap:5,marginTop:3}}><Clock size={11} color={T.text3}/><span style={{fontSize:11,color:T.text3}}>{task.duration}m</span></div>}
+        </div>
+        {!compact&&<Badge tag={task.tag}/>}
+      </div>
+      {onDelete&&(
+        <button onClick={()=>onDelete(task.id)} style={{border:"none",background:"transparent",cursor:"pointer",padding:4,display:"flex",alignItems:"center",flexShrink:0}}>
+          <X size={14} color={T.text3}/>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ─── MOOD SELECTOR ───────────────────────────────────────────────────────── */
 function MoodSelector({mood,setMood}){
   const moods=[{key:"high",Icon:Smile,label:"Energized",color:T.green,soft:T.greenSoft},{key:"neutral",Icon:Meh,label:"Steady",color:T.amber,soft:T.amberSoft},{key:"low",Icon:Frown,label:"Drained",color:T.red,soft:T.redSoft}];
   return(
@@ -143,14 +259,14 @@ function MoodSelector({mood,setMood}){
         const a=mood===key;
         return(<button key={key} onClick={()=>setMood(key)} style={{flex:1,border:a?`1.5px solid ${color}`:`1px solid ${T.border}`,borderRadius:16,padding:"14px 6px",background:a?soft:T.bg2,cursor:"pointer",transition:"all 0.22s cubic-bezier(0.34,1.56,0.64,1)",transform:a?"scale(1.06)":"scale(1)"}}>
           <Icon size={22} color={a?color:T.text3} style={{margin:"0 auto 6px",display:"block"}}/>
-          <p style={{fontSize:11,fontWeight:700,color:a?color:T.text3,letterSpacing:"0.03em"}}>{label}</p>
+          <p style={{fontSize:11,fontWeight:700,color:a?color:T.text3}}>{label}</p>
         </button>);
       })}
     </div>
   );
 }
 
-/* ─── MomentumBar ─────────────────────────────────────────────────────────── */
+/* ─── MOMENTUM BAR ────────────────────────────────────────────────────────── */
 function MomentumBar({pct}){
   const color=pct>=70?T.green:pct>=40?T.amber:T.red;
   const grad=pct>=70?"linear-gradient(90deg,#10B981,#34D399)":pct>=40?"linear-gradient(90deg,#F59E0B,#FCD34D)":"linear-gradient(90deg,#EF4444,#F87171)";
@@ -167,18 +283,21 @@ function MomentumBar({pct}){
   );
 }
 
-/* ─── AddTaskSheet ────────────────────────────────────────────────────────── */
+/* ─── ADD TASK SHEET ──────────────────────────────────────────────────────── */
 function AddTaskSheet({onClose,onAdd}){
   const[title,setTitle]=useState("");
   const[dur,setDur]=useState("20");
   const[tag,setTag]=useState("work");
   const[section,setSection]=useState("morning");
+  const[saving,setSaving]=useState(false);
 
   const iStyle={width:"100%",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",fontSize:14,color:T.text1,outline:"none",transition:"border 0.2s"};
 
-  const handleAdd=()=>{
+  const handleAdd=async()=>{
     if(!title.trim())return;
-    onAdd(section,{id:Date.now(),title:title.trim(),done:false,duration:parseInt(dur)||20,tag});
+    setSaving(true);
+    await onAdd(section,{title:title.trim(),done:false,duration:parseInt(dur)||20,tag,section});
+    setSaving(false);
     onClose();
   };
 
@@ -186,9 +305,7 @@ function AddTaskSheet({onClose,onAdd}){
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",zIndex:200,animation:"backdropIn 0.2s ease"}}/>
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.bg1,borderRadius:"24px 24px 0 0",border:`1px solid ${T.border}`,padding:"24px 20px 44px",zIndex:201,animation:"slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1)"}}>
-        {/* Handle */}
         <div style={{width:36,height:4,borderRadius:99,background:T.bg3,margin:"0 auto 20px"}}/>
-        {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
           <div>
             <p style={{fontSize:20,fontWeight:800,color:T.text1,letterSpacing:"-0.4px"}}>New Task</p>
@@ -198,22 +315,14 @@ function AddTaskSheet({onClose,onAdd}){
             <X size={15} color={T.text2}/>
           </button>
         </div>
-        {/* Title input */}
         <input autoFocus placeholder="Task title..." value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdd()}
           style={{...iStyle,marginBottom:10,fontSize:16,fontWeight:500}}
           onFocus={e=>e.target.style.borderColor=T.violetMid} onBlur={e=>e.target.style.borderColor=T.border}/>
-        {/* Duration + tag */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
           {[{label:"Duration",el:<select value={dur} onChange={e=>setDur(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>{[5,10,15,20,30,45,60,90,120].map(v=><option key={v} value={v}>{v} min</option>)}</select>},
             {label:"Category",el:<select value={tag} onChange={e=>setTag(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>{["work","comms","wellness","growth"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}</select>}]
-            .map(({label,el})=>(
-            <div key={label}>
-              <p style={{fontSize:11,fontWeight:700,color:T.text3,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>{label}</p>
-              {el}
-            </div>
-          ))}
+            .map(({label,el})=>(<div key={label}><p style={{fontSize:11,fontWeight:700,color:T.text3,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>{label}</p>{el}</div>))}
         </div>
-        {/* Section */}
         <p style={{fontSize:11,fontWeight:700,color:T.text3,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Add to</p>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           {[{key:"morning",label:"Morning",Icon:Coffee},{key:"afternoon",label:"Afternoon",Icon:Sun},{key:"evening",label:"Evening",Icon:Moon}].map(({key,label,Icon})=>(
@@ -223,9 +332,8 @@ function AddTaskSheet({onClose,onAdd}){
             </button>
           ))}
         </div>
-        {/* CTA */}
-        <button onClick={handleAdd} style={{width:"100%",border:"none",borderRadius:16,padding:"15px",background:title.trim()?T.gradViolet:T.bg3,color:title.trim()?"#fff":T.text3,fontSize:15,fontWeight:700,cursor:"pointer",transition:"all 0.2s",boxShadow:title.trim()?`0 8px 24px ${T.violetGlow}`:"none"}}>
-          Add Task
+        <button onClick={handleAdd} disabled={saving||!title.trim()} style={{width:"100%",border:"none",borderRadius:16,padding:"15px",background:title.trim()?T.gradViolet:T.bg3,color:title.trim()?"#fff":T.text3,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer",transition:"all 0.2s",boxShadow:title.trim()?`0 8px 24px ${T.violetGlow}`:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          {saving&&<Spinner/>}{saving?"Saving...":"Add Task"}
         </button>
       </div>
     </>
@@ -233,39 +341,33 @@ function AddTaskSheet({onClose,onAdd}){
 }
 
 /* ─── HOME VIEW ───────────────────────────────────────────────────────────── */
-function HomeView({tasks,setTasks,mood,setMood}){
+function HomeView({tasks,onToggle,mood,setMood,userEmail}){
   const momentum=getMomentum(tasks);
   const nextTask=getNext(tasks);
-  const all=Object.values(tasks).flat();
+  const all=flatTasks(tasks);
   const done=all.filter(t=>t.done).length;
-
-  const toggle=id=>setTasks(prev=>{const u={};for(const s in prev)u[s]=prev[s].map(t=>t.id===id?{...t,done:!t.done}:t);return u;});
+  const name=userEmail?.split("@")[0]||"there";
 
   return(
     <div style={{animation:"fadeUp 0.3s ease"}}>
-      {/* Header */}
       <div style={{marginBottom:22}}>
         <p style={{fontSize:12,color:T.text2,fontWeight:500,marginBottom:4}}>{dateStr}</p>
         <h1 style={{fontSize:28,fontWeight:800,color:T.text1,letterSpacing:"-0.8px",lineHeight:1.15}}>
-          {greeting},<br/>
+          {greeting}, {name}.<br/>
           <span style={{background:T.gradHero,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>let's crush it.</span>
         </h1>
       </div>
 
-      {/* Hero next task */}
       {nextTask?(
         <div style={{background:T.gradViolet,borderRadius:22,padding:"22px 20px",marginBottom:12,position:"relative",overflow:"hidden",boxShadow:`0 16px 40px ${T.violetGlow}`}}>
           <div style={{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,0.07)",pointerEvents:"none"}}/>
-          <div style={{position:"absolute",bottom:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,0.05)",pointerEvents:"none"}}/>
           <p style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",color:"rgba(255,255,255,0.55)",textTransform:"uppercase",marginBottom:6}}>Up next</p>
           <p style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:6,lineHeight:1.3}}>{nextTask.title}</p>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
-            <Clock size={12} color="rgba(255,255,255,0.65)"/>
-            <span style={{fontSize:12,color:"rgba(255,255,255,0.65)"}}>{nextTask.duration} min</span>
-            <span style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.45)",background:"rgba(255,255,255,0.1)",padding:"2px 8px",borderRadius:99,textTransform:"uppercase",letterSpacing:"0.05em"}}>{nextTask.tag}</span>
+            <Clock size={12} color="rgba(255,255,255,0.65)"/><span style={{fontSize:12,color:"rgba(255,255,255,0.65)"}}>{nextTask.duration} min</span>
+            <span style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.45)",background:"rgba(255,255,255,0.1)",padding:"2px 8px",borderRadius:99,textTransform:"uppercase"}}>{nextTask.tag}</span>
           </div>
-          <button onClick={()=>toggle(nextTask.id)} style={{display:"flex",alignItems:"center",gap:8,border:"none",background:"rgba(255,255,255,0.16)",borderRadius:12,padding:"11px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",backdropFilter:"blur(8px)",transition:"background 0.18s"}}
-            onMouseDown={e=>e.currentTarget.style.background="rgba(255,255,255,0.24)"} onMouseUp={e=>e.currentTarget.style.background="rgba(255,255,255,0.16)"}>
+          <button onClick={()=>onToggle(nextTask.id,nextTask.done)} style={{display:"flex",alignItems:"center",gap:8,border:"none",background:"rgba(255,255,255,0.16)",borderRadius:12,padding:"11px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",backdropFilter:"blur(8px)"}}>
             <CheckCircle size={15} color="#fff"/> Mark complete
           </button>
         </div>
@@ -277,7 +379,6 @@ function HomeView({tasks,setTasks,mood,setMood}){
         </Card>
       )}
 
-      {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <StatCard label="Completed" value={`${done}/${all.length}`} icon={CheckCircle} color={T.green} soft={T.greenSoft}/>
         <StatCard label="Focus left" value={`${all.filter(t=>!t.done).reduce((s,t)=>s+t.duration,0)}m`} icon={Clock} color={T.violetMid} soft={T.violetSoft}/>
@@ -292,7 +393,8 @@ function HomeView({tasks,setTasks,mood,setMood}){
 
       <Card>
         <SLabel icon={CheckCircle} label="Today's tasks"/>
-        {all.slice(0,5).map(t=><TaskRow key={t.id} task={t} onToggle={toggle} compact/>)}
+        {all.length===0&&<p style={{fontSize:13,color:T.text3,textAlign:"center",padding:"12px 0"}}>No tasks yet — tap + to add one</p>}
+        {all.slice(0,5).map(t=><TaskRow key={t.id} task={t} onToggle={onToggle} compact/>)}
         {all.length>5&&<p style={{marginTop:10,fontSize:13,color:T.violetMid,fontWeight:600}}>+{all.length-5} more</p>}
       </Card>
     </div>
@@ -300,14 +402,12 @@ function HomeView({tasks,setTasks,mood,setMood}){
 }
 
 /* ─── PLANNER VIEW ────────────────────────────────────────────────────────── */
-function PlannerView({tasks,setTasks}){
+function PlannerView({tasks,onToggle,onDelete}){
   const sections=[
     {key:"morning",  label:"Morning",   Icon:Coffee, color:T.amber,    soft:T.amberSoft  },
     {key:"afternoon",label:"Afternoon", Icon:Sun,    color:T.coral,    soft:T.coralSoft  },
     {key:"evening",  label:"Evening",   Icon:Moon,   color:T.violetMid,soft:T.violetSoft },
   ];
-  const toggle=id=>setTasks(prev=>{const u={};for(const s in prev)u[s]=prev[s].map(t=>t.id===id?{...t,done:!t.done}:t);return u;});
-
   return(
     <div style={{animation:"fadeUp 0.3s ease"}}>
       <div style={{marginBottom:22}}>
@@ -322,14 +422,14 @@ function PlannerView({tasks,setTasks}){
             </div>
             <div style={{flex:1}}>
               <p style={{fontSize:15,fontWeight:700,color:T.text1}}>{label}</p>
-              <p style={{fontSize:11,color:T.text2}}>{tasks[key].filter(t=>t.done).length}/{tasks[key].length} done · {tasks[key].reduce((s,t)=>s+t.duration,0)}m total</p>
+              <p style={{fontSize:11,color:T.text2}}>{tasks[key]?.filter(t=>t.done).length||0}/{tasks[key]?.length||0} done · {tasks[key]?.reduce((s,t)=>s+t.duration,0)||0}m total</p>
             </div>
             <div style={{width:44,height:4,borderRadius:99,background:T.bg3,overflow:"hidden"}}>
-              <div style={{height:"100%",borderRadius:99,background:color,width:`${tasks[key].length?(tasks[key].filter(t=>t.done).length/tasks[key].length)*100:0}%`,transition:"width 0.4s ease"}}/>
+              <div style={{height:"100%",borderRadius:99,background:color,width:`${tasks[key]?.length?(tasks[key].filter(t=>t.done).length/tasks[key].length)*100:0}%`,transition:"width 0.4s ease"}}/>
             </div>
           </div>
-          {tasks[key].map(t=><TaskRow key={t.id} task={t} onToggle={toggle}/>)}
-          {tasks[key].length===0&&<p style={{fontSize:13,color:T.text3,padding:"10px 0 2px",textAlign:"center"}}>No tasks yet — tap + to add one</p>}
+          {tasks[key]?.map(t=><TaskRow key={t.id} task={t} onToggle={onToggle} onDelete={onDelete}/>)}
+          {(!tasks[key]||tasks[key].length===0)&&<p style={{fontSize:13,color:T.text3,padding:"10px 0 2px",textAlign:"center"}}>No tasks yet — tap + to add one</p>}
         </Card>
       ))}
     </div>
@@ -338,7 +438,7 @@ function PlannerView({tasks,setTasks}){
 
 /* ─── INSIGHTS VIEW ───────────────────────────────────────────────────────── */
 function InsightsView({tasks,mood}){
-  const all=Object.values(tasks).flat();
+  const all=flatTasks(tasks);
   const done=all.filter(t=>t.done).length;
   const momentum=getMomentum(tasks);
   const focusDone=all.filter(t=>t.done).reduce((s,t)=>s+t.duration,0);
@@ -371,24 +471,26 @@ function InsightsView({tasks,mood}){
           </div>
         </div>
       </Card>
-      <Card>
-        <SLabel icon={BarChart2} label="Tasks by category"/>
-        {Object.entries(byTag).map(([tag,count])=>{
-          const m=TAG_META[tag]||{bg:T.bg3,text:T.text2,dot:T.text3};
-          const pct=Math.round((count/all.length)*100);
-          return(
-            <div key={tag} style={{marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:600,color:T.text1,textTransform:"capitalize"}}>{tag}</span>
-                <span style={{fontSize:12,fontWeight:700,color:m.text}}>{count} · {pct}%</span>
+      {Object.keys(byTag).length>0&&(
+        <Card>
+          <SLabel icon={BarChart2} label="Tasks by category"/>
+          {Object.entries(byTag).map(([tag,count])=>{
+            const m=TAG_META[tag]||{bg:T.bg3,text:T.text2,dot:T.text3};
+            const pct=Math.round((count/all.length)*100);
+            return(
+              <div key={tag} style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:13,fontWeight:600,color:T.text1,textTransform:"capitalize"}}>{tag}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:m.text}}>{count} · {pct}%</span>
+                </div>
+                <div style={{height:5,borderRadius:99,background:T.bg3}}>
+                  <div style={{height:"100%",borderRadius:99,width:`${pct}%`,background:m.dot,transition:"width 0.5s ease",boxShadow:`0 0 6px ${m.dot}88`}}/>
+                </div>
               </div>
-              <div style={{height:5,borderRadius:99,background:T.bg3}}>
-                <div style={{height:"100%",borderRadius:99,width:`${pct}%`,background:m.dot,transition:"width 0.5s ease",boxShadow:`0 0 6px ${m.dot}88`}}/>
-              </div>
-            </div>
-          );
-        })}
-      </Card>
+            );
+          })}
+        </Card>
+      )}
       <Card>
         <SLabel icon={Battery} label="Focus time"/>
         <div style={{display:"flex",gap:10}}>
@@ -405,14 +507,17 @@ function InsightsView({tasks,mood}){
 }
 
 /* ─── PROFILE VIEW ────────────────────────────────────────────────────────── */
-function ProfileView(){
-  const[workStart,setWorkStart]=useState("09:00");
-  const[workEnd,setWorkEnd]=useState("18:00");
+function ProfileView({userEmail,onSignOut}){
   const[focusDur,setFocusDur]=useState(45);
   const[breakDur,setBreakDur]=useState(10);
   const[notifs,setNotifs]=useState(true);
+  const[signingOut,setSigningOut]=useState(false);
 
-  const iStyle={width:"100%",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 12px",fontSize:14,color:T.text1,outline:"none"};
+  const handleSignOut=async()=>{
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    onSignOut();
+  };
 
   return(
     <div style={{animation:"fadeUp 0.3s ease"}}>
@@ -420,9 +525,10 @@ function ProfileView(){
         <div style={{width:72,height:72,borderRadius:"50%",background:T.gradViolet,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:`0 8px 24px ${T.violetGlow}`}}>
           <User size={30} color="#fff"/>
         </div>
-        <p style={{fontSize:20,fontWeight:800,color:T.text1}}>Your Name</p>
-        <p style={{fontSize:12,color:T.text2,marginTop:2}}>Day Copilot · Pro</p>
+        <p style={{fontSize:20,fontWeight:800,color:T.text1}}>{userEmail?.split("@")[0]}</p>
+        <p style={{fontSize:12,color:T.text2,marginTop:2}}>{userEmail}</p>
       </div>
+
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         {[{label:"Day streak",value:"4"},{label:"Tasks done",value:"32"},{label:"Focus hrs",value:"18"}].map(({label,value})=>(
           <div key={label} style={{flex:1,background:T.bg1,borderRadius:14,padding:"12px 8px",textAlign:"center",border:`1px solid ${T.border}`}}>
@@ -431,17 +537,7 @@ function ProfileView(){
           </div>
         ))}
       </div>
-      <Card>
-        <SLabel icon={Clock} label="Working Hours"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {[{l:"Start",v:workStart,s:setWorkStart},{l:"End",v:workEnd,s:setWorkEnd}].map(({l,v,s})=>(
-            <div key={l}>
-              <p style={{fontSize:11,color:T.text3,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>{l}</p>
-              <input type="time" value={v} onChange={e=>s(e.target.value)} style={iStyle}/>
-            </div>
-          ))}
-        </div>
-      </Card>
+
       <Card>
         <SLabel icon={Target} label="Focus Settings"/>
         {[{label:"Focus session",val:focusDur,set:setFocusDur,min:15,max:120,step:5,color:T.violetMid},{label:"Break length",val:breakDur,set:setBreakDur,min:5,max:30,step:5,color:T.green}].map(({label,val,set,min,max,step,color})=>(
@@ -454,9 +550,9 @@ function ProfileView(){
           </div>
         ))}
       </Card>
+
       <Card>
         {[{label:"Notifications",sub:"Task reminders & nudges",right:<div onClick={()=>setNotifs(!notifs)} style={{width:46,height:26,borderRadius:99,cursor:"pointer",background:notifs?T.violetMid:T.bg3,display:"flex",alignItems:"center",padding:"0 4px",justifyContent:notifs?"flex-end":"flex-start",transition:"all 0.25s cubic-bezier(0.34,1.56,0.64,1)",boxShadow:notifs?`0 0 10px ${T.violetGlow}`:"none"}}><div style={{width:18,height:18,borderRadius:"50%",background:"#fff"}}/></div>},
-           {label:"Daily recap",sub:"Summary at end of day",right:<ChevronRight size={16} color={T.text3}/>},
            {label:"Theme",sub:null,right:<span style={{fontSize:12,fontWeight:700,color:T.violetMid,background:T.violetSoft,padding:"4px 12px",borderRadius:99}}>Midnight</span>}
         ].map(({label,sub,right},i,arr)=>(
           <div key={label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
@@ -465,7 +561,14 @@ function ProfileView(){
           </div>
         ))}
       </Card>
-      <p style={{textAlign:"center",fontSize:12,color:T.text3,padding:"12px 0 4px"}}>Day Copilot · v1.0.0</p>
+
+      {/* Sign out */}
+      <button onClick={handleSignOut} disabled={signingOut} style={{width:"100%",border:`1px solid ${T.red}33`,borderRadius:16,padding:"14px",background:T.redSoft,color:T.red,fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s",marginBottom:8}}>
+        {signingOut?<Spinner/>:<LogOut size={16} color={T.red}/>}
+        {signingOut?"Signing out...":"Sign Out"}
+      </button>
+
+      <p style={{textAlign:"center",fontSize:12,color:T.text3,padding:"8px 0 4px"}}>Day Copilot · v2.0.0</p>
     </div>
   );
 }
@@ -488,50 +591,147 @@ function BottomNav({active,setActive,onPlus}){
   return(
     <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(17,17,24,0.94)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,borderRadius:"22px 22px 0 0",height:70,zIndex:100,display:"flex",alignItems:"center",padding:"0 6px"}}>
       {left.map(t=><Tab key={t.key} k={t.key} label={t.label} Icon={t.Icon}/>)}
-
-      {/* Center FAB */}
       <div style={{flex:"0 0 70px",display:"flex",justifyContent:"center",alignItems:"center"}}>
         <button onClick={onPlus} style={{width:58,height:58,borderRadius:"50%",border:"none",background:T.gradViolet,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",bottom:18,boxShadow:`0 8px 28px ${T.violetGlow},0 0 0 4px ${T.bg0}`,transition:"all 0.22s cubic-bezier(0.34,1.56,0.64,1)"}}
-          onMouseDown={e=>{e.currentTarget.style.transform="scale(0.88)";e.currentTarget.style.boxShadow=`0 4px 12px ${T.violetGlow},0 0 0 4px ${T.bg0}`;}}
-          onMouseUp={e=>{e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow=`0 8px 28px ${T.violetGlow},0 0 0 4px ${T.bg0}`;}}
-          onTouchStart={e=>{e.currentTarget.style.transform="scale(0.88)";}}
-          onTouchEnd={e=>{e.currentTarget.style.transform="scale(1)";}}>
+          onMouseDown={e=>{e.currentTarget.style.transform="scale(0.88)";}}
+          onMouseUp={e=>{e.currentTarget.style.transform="scale(1)";}}>
           <Plus size={26} color="#fff" strokeWidth={2.5}/>
         </button>
       </div>
-
       {right.map(t=><Tab key={t.key} k={t.key} label={t.label} Icon={t.Icon}/>)}
     </nav>
   );
 }
 
 /* ─── ROOT ────────────────────────────────────────────────────────────────── */
-export default function App(){
+export default function DayCopilot(){
+  const[session,setSession]=useState(null);
+  const[authChecked,setAuthChecked]=useState(false);
   const[tab,setTab]=useState("home");
-  const[tasks,setTasks]=useState(INITIAL_TASKS);
+  const[tasks,setTasks]=useState({morning:[],afternoon:[],evening:[]});
   const[mood,setMood]=useState("neutral");
   const[showAdd,setShowAdd]=useState(false);
+  const[loadingTasks,setLoadingTasks]=useState(false);
 
-  const addTask=(section,task)=>setTasks(prev=>({...prev,[section]:[...prev[section],task]}));
+  /* ── Auth listener ── */
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      setSession(session);
+      setAuthChecked(true);
+    });
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      setSession(session);
+      if(!session) setTasks({morning:[],afternoon:[],evening:[]});
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
 
+  /* ── Load tasks when session starts ── */
+  useEffect(()=>{
+    if(session?.user) loadTasks();
+  },[session]);
+
+  /* ── Real-time sync ── */
+  useEffect(()=>{
+    if(!session?.user) return;
+    const channel = supabase
+      .channel("tasks-realtime")
+      .on("postgres_changes",{event:"*",schema:"public",table:"tasks",filter:`user_id=eq.${session.user.id}`},
+        ()=>{ loadTasks(); })
+      .subscribe();
+    return()=>supabase.removeChannel(channel);
+  },[session]);
+
+  const loadTasks = useCallback(async()=>{
+    if(!session?.user) return;
+    setLoadingTasks(true);
+    const{data,error}=await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id",session.user.id)
+      .order("created_at",{ascending:true});
+    if(!error&&data) setTasks(groupBySection(data));
+    setLoadingTasks(false);
+  },[session]);
+
+  const handleToggle = async(id, currentDone)=>{
+    // Optimistic update
+    setTasks(prev=>{
+      const u={};
+      for(const s in prev) u[s]=prev[s].map(t=>t.id===id?{...t,done:!currentDone}:t);
+      return u;
+    });
+    await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
+  };
+
+  const handleAdd = async(section, taskData)=>{
+    if(!session?.user) return;
+    const{data,error}=await supabase.from("tasks").insert({
+      ...taskData,
+      section,
+      user_id: session.user.id,
+    }).select().single();
+    if(!error&&data){
+      setTasks(prev=>({...prev,[section]:[...prev[section],data]}));
+    }
+  };
+
+  const handleDelete = async(id)=>{
+    setTasks(prev=>{
+      const u={};
+      for(const s in prev) u[s]=prev[s].filter(t=>t.id!==id);
+      return u;
+    });
+    await supabase.from("tasks").delete().eq("id",id);
+  };
+
+  /* ── Loading state ── */
+  if(!authChecked){
+    return(
+      <>
+        <style>{GLOBAL_CSS}</style>
+        <div style={{minHeight:"100vh",background:T.bg0,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Outfit,sans-serif"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{width:56,height:56,borderRadius:18,background:T.gradViolet,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",boxShadow:`0 8px 24px ${T.violetGlow}`}}>
+              <Zap size={26} color="#fff"/>
+            </div>
+            <Spinner/>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  /* ── Auth screen ── */
+  if(!session){
+    return <AuthScreen onAuth={setSession}/>;
+  }
+
+  /* ── Main app ── */
   const screens={
-    home:    <HomeView tasks={tasks} setTasks={setTasks} mood={mood} setMood={setMood}/>,
-    planner: <PlannerView tasks={tasks} setTasks={setTasks}/>,
+    home:    <HomeView tasks={tasks} onToggle={handleToggle} mood={mood} setMood={setMood} userEmail={session.user.email}/>,
+    planner: <PlannerView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
     insights:<InsightsView tasks={tasks} mood={mood}/>,
-    profile: <ProfileView/>,
+    profile: <ProfileView userEmail={session.user.email} onSignOut={()=>setSession(null)}/>,
   };
 
   return(
     <>
+      <style>{GLOBAL_CSS}</style>
       <div style={{minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,-apple-system,sans-serif"}}>
         <div style={{width:"100%",maxWidth:430,position:"relative"}}>
+          {loadingTasks&&(
+            <div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:99,padding:"8px 16px",display:"flex",alignItems:"center",gap:8,zIndex:50}}>
+              <Spinner/><span style={{fontSize:12,color:T.text2,fontWeight:500}}>Syncing...</span>
+            </div>
+          )}
           <div style={{minHeight:"100vh",padding:"28px 16px 96px",overflowX:"hidden"}}>
             <div key={tab} style={{animation:"fadeUp 0.25s ease both"}}>
               {screens[tab]}
             </div>
           </div>
           <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
-          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={addTask}/>}
+          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
         </div>
       </div>
     </>
