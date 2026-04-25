@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
+import AICopilot from "./AICopilot";
 
 /* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
@@ -922,6 +923,20 @@ export default function App() {
     }
   };
 
+  const handleReschedule = async (id, newSection) => {
+    setTasks(prev => {
+      const u = { morning:[], afternoon:[], evening:[] };
+      for (const s in prev) {
+        prev[s].forEach(t => {
+          if (t.id === id) u[newSection].push({ ...t, section: newSection });
+          else u[s].push(t);
+        });
+      }
+      return u;
+    });
+    await supabase.from("tasks").update({ section: newSection }).eq("id", id);
+  };
+
   const handleDelete = async (id) => {
     setTasks(prev => {
       const u = {};
@@ -982,6 +997,15 @@ export default function App() {
 
           <BottomNav active={tab} setActive={setTab} onPlus={() => setShowAdd(true)}/>
           {showAdd && <AddTaskSheet onClose={() => setShowAdd(false)} onAdd={handleAdd}/>}
+          <AICopilot
+            apiKey="AIzaSy-YOUR-KEY-HERE"
+            userProfile={userProfile}
+            tasks={tasks}
+            onAddTask={handleAdd}
+            onDeleteTask={handleDelete}
+            onCompleteTask={handleToggle}
+            onRescheduleTask={handleReschedule}
+         />
         </div>
       </div>
     </>
