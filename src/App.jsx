@@ -506,6 +506,41 @@ function HomeView({ tasks, onToggle, mood, setMood, userProfile }) {
 
       <Card><MomentumBar pct={momentum}/></Card>
 
+      {/* Auto-reschedule missed tasks */}
+{flatTasks(tasks).some(t => !t.done && (() => {
+  const hour = new Date().getHours();
+  return (t.section === "morning" && hour >= 12) ||
+         (t.section === "afternoon" && hour >= 17);
+})()) && (
+  <Card style={{ background:"rgba(245,158,11,0.1)", border:`1px solid ${T.amber}33` }}>
+    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+      <div style={{ width:36, height:36, borderRadius:11, background:T.amberSoft,
+        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+        <AlertTriangle size={18} color={T.amber}/>
+      </div>
+      <div style={{ flex:1 }}>
+        <p style={{ fontSize:14, fontWeight:700, color:T.text1 }}>Missed tasks detected</p>
+        <p style={{ fontSize:12, color:T.text2, marginTop:1 }}>
+          Some tasks from earlier weren't completed
+        </p>
+      </div>
+      <button
+        onClick={() => {
+          // Open AI chat and auto-trigger reschedule
+          document.querySelector('[data-copilot-bubble]')?.click();
+          setTimeout(() => {
+            window.__copilotSend?.("I have missed tasks from earlier in the day. Automatically reschedule them to the best remaining time slots based on my patterns.");
+          }, 500);
+        }}
+        style={{ border:"none", borderRadius:12, padding:"8px 14px",
+          background:T.amber, color:"#fff", fontSize:12, fontWeight:700,
+          cursor:"pointer", flexShrink:0 }}>
+        Fix it
+      </button>
+    </div>
+  </Card>
+)}
+
       <Card>
         <SLabel icon={Wind} label="Energy check"/>
         <MoodSelector mood={mood} setMood={setMood}/>
@@ -929,17 +964,28 @@ export default function App() {
   };
 
   const handleReschedule = async (id, newSection) => {
+    // Log the behaviour
+    const task = Object.values(tasks).flat().find(t => t.id === id);
+    if (task) await logBehaviour(session.user.id, "rescheduled", task, mood);
+  
+    // Update in DB with reschedule count
     setTasks(prev => {
       const u = { morning:[], afternoon:[], evening:[] };
       for (const s in prev) {
         prev[s].forEach(t => {
-          if (t.id === id) u[newSection].push({ ...t, section: newSection });
+          if (t.id === id) u[newSection].push({ ...t, section:newSection });
           else u[s].push(t);
         });
       }
       return u;
     });
-    await supabase.from("tasks").update({ section: newSection }).eq("id", id);
+  
+    await supabase.from("tasks")
+      .update({
+        section: newSection,
+        reschedule_count: (task?.reschedule_count || 0) + 1,
+      })
+      .eq("id", id);
   };
 
   const handleDelete = async (id) => {
