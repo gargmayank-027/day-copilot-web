@@ -375,6 +375,7 @@ export default function AICopilot({
     ];
 
     try {
+      console.log("Calling Gemini with key:", apiKey?.slice(0,10));
       const systemPrompt = buildSystemPrompt(userProfile, tasks, weather, new Date());
 
       const res = await fetch(
@@ -393,6 +394,8 @@ export default function AICopilot({
       );
 
       if (!res.ok) {
+        const errBody = await res.json();
+        console.error("Gemini error response:", errBody);
         throw new Error(`API error: ${res.status}`);
       }
 
