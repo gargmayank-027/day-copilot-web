@@ -998,7 +998,7 @@ export default function App() {
           <BottomNav active={tab} setActive={setTab} onPlus={() => setShowAdd(true)}/>
           {showAdd && <AddTaskSheet onClose={() => setShowAdd(false)} onAdd={handleAdd}/>}
           <AICopilot
-            apiKey="AIzaSy-YOUR-KEY-HERE"
+            apiKey="AIzaSyCNj7WYHn2Ggq74RX3S4S6ceJgSgTnnMEU"
             userProfile={userProfile}
             tasks={tasks}
             onAddTask={handleAdd}
