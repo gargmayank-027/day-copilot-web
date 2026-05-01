@@ -8,6 +8,8 @@ import {
 import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
 import AICopilot from "./AICopilot";
+import { logBehaviour } from "./behaviourTracker";
+
 
 /* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
@@ -907,12 +909,15 @@ export default function App() {
   const handleToggle = async (id, currentDone) => {
     setTasks(prev => {
       const u = {};
-      for (const s in prev) u[s] = prev[s].map(t => t.id===id ? { ...t, done:!currentDone } : t);
+      for (const s in prev) u[s] = prev[s].map(t => t.id===id ? {...t, done:!currentDone} : t);
       return u;
     });
     await supabase.from("tasks").update({ done:!currentDone }).eq("id", id);
+    // Log the behaviour
+    const task = Object.values(tasks).flat().find(t => t.id === id);
+    if (task) await logBehaviour(session.user.id, currentDone ? "skipped" : "completed", task, mood);
   };
-
+  
   const handleAdd = async (section, taskData) => {
     if (!session?.user) return;
     const { data, error } = await supabase.from("tasks").insert({
@@ -938,12 +943,14 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
+    const task = Object.values(tasks).flat().find(t => t.id === id);
     setTasks(prev => {
       const u = {};
       for (const s in prev) u[s] = prev[s].filter(t => t.id !== id);
       return u;
     });
     await supabase.from("tasks").delete().eq("id", id);
+    if (task) await logBehaviour(session.user.id, "deleted", task, mood);
   };
 
   const handleOnboardingComplete = async () => {
@@ -999,8 +1006,10 @@ export default function App() {
           {showAdd && <AddTaskSheet onClose={() => setShowAdd(false)} onAdd={handleAdd}/>}
           <AICopilot
             apiKey="AIzaSyCNj7WYHn2Ggq74RX3S4S6ceJgSgTnnMEU"
+            userId={session.user.id}
             userProfile={userProfile}
             tasks={tasks}
+            mood={mood} 
             onAddTask={handleAdd}
             onDeleteTask={handleDelete}
             onCompleteTask={handleToggle}
