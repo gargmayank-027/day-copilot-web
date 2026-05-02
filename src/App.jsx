@@ -10,6 +10,11 @@ import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
 import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
+import { initPushNotifications, scheduleTaskNotifications,
+  scheduleMorningNotification, getNotificationStatus,
+  disablePushNotifications } from "./notifications";
+import { NotificationToastContainer,
+  NotificationPermissionPrompt } from "./NotificationToast";
 
 /* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
@@ -76,6 +81,9 @@ const isMissedTask = (task) => {
 const now      = new Date();
 const greeting = now.getHours()<12?"Good morning":now.getHours()<17?"Good afternoon":"Good evening";
 const dateStr  = now.toLocaleDateString("en-IN",{weekday:"long",month:"long",day:"numeric"});
+const [notifStatus,    setNotifStatus]    = useState(getNotificationStatus());
+const [showNotifPrompt,setShowNotifPrompt]= useState(false);
+
 
 /* ─── Atoms ───────────────────────────────────────────────────────────────── */
 function Spinner({ color=T.violetMid, size=20 }) {
@@ -670,6 +678,35 @@ export default function App() {
   /* ── Load tasks ── */
   useEffect(()=>{ if (session?.user&&onboardingDone) loadTasks(); },[session,onboardingDone]);
 
+  // Show notification prompt to new users after 30 seconds
+useEffect(() => {
+  if (!session?.user || notifStatus !== "default") return;
+  const t = setTimeout(() => setShowNotifPrompt(true), 30000);
+  return () => clearTimeout(t);
+}, [session, notifStatus]);
+
+// Schedule notifications whenever tasks change
+useEffect(() => {
+  if (!session?.user || !onboardingDone) return;
+  scheduleTaskNotifications(session.user.id, tasks);
+  scheduleMorningNotification(session.user.id);
+}, [tasks, session, onboardingDone]);
+
+// Handle notification actions (done / reschedule from notification)
+useEffect(() => {
+  window.__handleNotificationAction = (action, data) => {
+    if (action === "done" && data.taskId) {
+      const task = flatTasks(tasks).find(t => t.id === data.taskId);
+      if (task) handleToggle(task.id, task.done);
+    } else if (action === "reschedule" && data.taskId) {
+      // Open AI copilot to reschedule
+      window.__copilotOpen?.();
+      setTimeout(() => window.__copilotSend?.(`Reschedule task "${data.taskId}" to the best available slot`), 600);
+    }
+  };
+  return () => { delete window.__handleNotificationAction; };
+}, [tasks]);
+
   /* ── Realtime sync ── */
   useEffect(()=>{
     if (!session?.user) return;
@@ -774,6 +811,23 @@ export default function App() {
             onRescheduleTask={handleReschedule}
           />
         </div>
+
+        <NotificationToastContainer
+  onComplete={(id) => { const t = flatTasks(tasks).find(x=>x.id===id); if(t) handleToggle(t.id,t.done); }}
+  onReschedule={(id) => { window.__copilotOpen?.(); setTimeout(()=>window.__copilotSend?.(`Reschedule task id ${id} to best slot`),600); }}
+/>
+
+{showNotifPrompt && notifStatus === "default" && (
+  <NotificationPermissionPrompt
+    onEnable={async () => {
+      const ok = await initPushNotifications(session.user.id);
+      setNotifStatus(ok ? "granted" : "denied");
+      setShowNotifPrompt(false);
+    }}
+    onDismiss={() => setShowNotifPrompt(false)}
+  />
+)}
+
       </div>
     </>
   );
