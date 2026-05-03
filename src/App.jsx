@@ -10,11 +10,6 @@ import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
 import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
-//import { initPushNotifications, scheduleTaskNotifications,
-//  scheduleMorningNotification, getNotificationStatus,
-//  disablePushNotifications } from "./notifications";
-//import { NotificationToastContainer,
-//  NotificationPermissionPrompt } from "./NotificationToast";
 
 /* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
@@ -81,9 +76,6 @@ const isMissedTask = (task) => {
 const now      = new Date();
 const greeting = now.getHours()<12?"Good morning":now.getHours()<17?"Good afternoon":"Good evening";
 const dateStr  = now.toLocaleDateString("en-IN",{weekday:"long",month:"long",day:"numeric"});
-// const [notifStatus,    setNotifStatus]    = useState(getNotificationStatus());
-// const [showNotifPrompt,setShowNotifPrompt]= useState(false);
-
 
 /* ─── Atoms ───────────────────────────────────────────────────────────────── */
 function Spinner({ color=T.violetMid, size=20 }) {
@@ -352,45 +344,66 @@ function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile })
 
       {/* Up next hero card */}
       {nextTask ? (
-        <div style={{ background:T.gradViolet, borderRadius:22, padding:"22px 20px", marginBottom:12, position:"relative", overflow:"hidden", boxShadow:`0 16px 40px ${T.violetGlow}` }}>
+        <div style={{ background:T.gradViolet, borderRadius:22, padding:"20px 20px 18px", marginBottom:12, position:"relative", overflow:"hidden", boxShadow:`0 16px 40px ${T.violetGlow}` }}>
           <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.07)", pointerEvents:"none" }}/>
           <p style={{ fontSize:10, fontWeight:700, letterSpacing:"0.1em", color:"rgba(255,255,255,0.55)", textTransform:"uppercase", marginBottom:6 }}>Up next</p>
-          <p style={{ fontSize:18, fontWeight:700, color:"#fff", marginBottom:6, lineHeight:1.3 }}>{nextTask.title}</p>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:18 }}>
-            <Clock size={12} color="rgba(255,255,255,0.65)"/>
-            <span style={{ fontSize:12, color:"rgba(255,255,255,0.65)" }}>{nextTask.duration} min</span>
-            <span style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,0.45)", background:"rgba(255,255,255,0.1)", padding:"2px 8px", borderRadius:99, textTransform:"uppercase" }}>{nextTask.tag}</span>
+          <p style={{ fontSize:18, fontWeight:700, color:"#fff", marginBottom:8, lineHeight:1.3 }}>{nextTask.title}</p>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <Clock size={12} color="rgba(255,255,255,0.65)"/>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.65)" }}>{nextTask.duration} min</span>
+              <span style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,0.45)", background:"rgba(255,255,255,0.1)", padding:"2px 8px", borderRadius:99, textTransform:"uppercase" }}>{nextTask.tag}</span>
+            </div>
+            <button onClick={()=>onToggle(nextTask.id,nextTask.done)}
+              style={{ display:"flex", alignItems:"center", gap:6, border:"none", background:"rgba(255,255,255,0.18)", borderRadius:10, padding:"8px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", backdropFilter:"blur(8px)", flexShrink:0 }}>
+              <CheckCircle size={13} color="#fff"/> Done
+            </button>
           </div>
-          <button onClick={()=>onToggle(nextTask.id,nextTask.done)} style={{ display:"flex", alignItems:"center", gap:8, border:"none", background:"rgba(255,255,255,0.16)", borderRadius:12, padding:"11px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", backdropFilter:"blur(8px)" }}>
-            <CheckCircle size={15} color="#fff"/> Mark complete
-          </button>
         </div>
       ) : (
-        <Card style={{ textAlign:"center", padding:"28px 20px", background:T.greenSoft, border:`1px solid ${T.green}33` }}>
-          <Award size={32} color={T.green} style={{ margin:"0 auto 10px", display:"block" }}/>
-          <p style={{ fontSize:17, fontWeight:700, color:T.text1 }}>All done! 🎉</p>
-          <p style={{ fontSize:13, color:T.text2, marginTop:4 }}>You've completed everything today.</p>
+        <Card style={{ textAlign:"center", padding:"20px", background:T.greenSoft, border:`1px solid ${T.green}33` }}>
+          <Award size={28} color={T.green} style={{ margin:"0 auto 8px", display:"block" }}/>
+          <p style={{ fontSize:15, fontWeight:700, color:T.text1 }}>All done! 🎉</p>
+          <p style={{ fontSize:12, color:T.text2, marginTop:3 }}>You've completed everything today.</p>
         </Card>
       )}
 
-      {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-        <StatCard label="Completed" value={`${done}/${all.length}`} icon={CheckCircle} color={T.green} soft={T.greenSoft}/>
-        <StatCard label="Focus left" value={`${all.filter(t=>!t.done).reduce((s,t)=>s+t.duration,0)}m`} icon={Clock} color={T.violetMid} soft={T.violetSoft}/>
-      </div>
-
-      <Card><MomentumBar pct={momentum}/></Card>
-
-      <Card>
-        <SLabel icon={Wind} label="Energy check"/>
-        <MoodSelector mood={mood} setMood={setMood}/>
+      {/* Today's tasks — right after Up Next */}
+      <Card style={{ padding:"14px 16px", marginBottom:12 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+          <SLabel icon={CheckCircle} label="Today's tasks" color={T.text2}/>
+          <span style={{ fontSize:11, fontWeight:700, color:T.violetMid, background:T.violetSoft, padding:"2px 8px", borderRadius:99, marginTop:-8 }}>
+            {done}/{all.length}
+          </span>
+        </div>
+        {all.length===0 && <p style={{ fontSize:13, color:T.text3, textAlign:"center", padding:"8px 0" }}>No tasks yet — tap + to add one</p>}
+        {all.slice(0,6).map(t=><TaskRow key={t.id} task={t} onToggle={onToggle} compact/>)}
+        {all.length>6 && <p style={{ marginTop:8, fontSize:12, color:T.violetMid, fontWeight:600 }}>+{all.length-6} more</p>}
       </Card>
 
-      <Card>
-        <SLabel icon={CheckCircle} label="Today's tasks"/>
-        {all.length===0&&<p style={{ fontSize:13, color:T.text3, textAlign:"center", padding:"12px 0" }}>No tasks yet — tap + to add one</p>}
-        {all.slice(0,5).map(t=><TaskRow key={t.id} task={t} onToggle={onToggle} compact/>)}
-        {all.length>5&&<p style={{ marginTop:10, fontSize:13, color:T.violetMid, fontWeight:600 }}>+{all.length-5} more</p>}
+      {/* Compact 3-col stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+        <div style={{ background:T.greenSoft, borderRadius:14, padding:"10px 8px 8px", border:`1px solid ${T.green}22`, textAlign:"center" }}>
+          <CheckCircle size={14} color={T.green} style={{ marginBottom:4 }}/>
+          <p style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>{done}/{all.length}</p>
+          <p style={{ fontSize:9, color:T.green, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Done</p>
+        </div>
+        <div style={{ background:T.violetSoft, borderRadius:14, padding:"10px 8px 8px", border:`1px solid ${T.violetMid}22`, textAlign:"center" }}>
+          <Clock size={14} color={T.violetMid} style={{ marginBottom:4 }}/>
+          <p style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>{all.filter(t=>!t.done).reduce((s,t)=>s+t.duration,0)}m</p>
+          <p style={{ fontSize:9, color:T.violetMid, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Left</p>
+        </div>
+        <div style={{ background:`${momentum>=70?T.green:momentum>=40?T.amber:T.red}15`, borderRadius:14, padding:"10px 8px 8px", border:`1px solid ${momentum>=70?T.green:momentum>=40?T.amber:T.red}22`, textAlign:"center" }}>
+          <Flame size={14} color={momentum>=70?T.green:momentum>=40?T.amber:T.red} style={{ marginBottom:4 }}/>
+          <p style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>{momentum}%</p>
+          <p style={{ fontSize:9, color:momentum>=70?T.green:momentum>=40?T.amber:T.red, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Momentum</p>
+        </div>
+      </div>
+
+      {/* Compact mood */}
+      <Card style={{ padding:"12px 16px" }}>
+        <SLabel icon={Wind} label="Energy check" color={T.text2}/>
+        <MoodSelector mood={mood} setMood={setMood}/>
       </Card>
     </div>
   );
@@ -678,35 +691,6 @@ export default function App() {
   /* ── Load tasks ── */
   useEffect(()=>{ if (session?.user&&onboardingDone) loadTasks(); },[session,onboardingDone]);
 
-  // Show notification prompt to new users after 30 seconds
-// useEffect(() => {
-//   if (!session?.user || notifStatus !== "default") return;
-//   const t = setTimeout(() => setShowNotifPrompt(true), 30000);
-//   return () => clearTimeout(t);
-// }, [session, notifStatus]);
-
-// Schedule notifications whenever tasks change
-// useEffect(() => {
-//   if (!session?.user || !onboardingDone) return;
-//   scheduleTaskNotifications(session.user.id, tasks);
-//   scheduleMorningNotification(session.user.id);
-// }, [tasks, session, onboardingDone]);
-
-// Handle notification actions (done / reschedule from notification)
-useEffect(() => {
-  window.__handleNotificationAction = (action, data) => {
-    if (action === "done" && data.taskId) {
-      const task = flatTasks(tasks).find(t => t.id === data.taskId);
-      if (task) handleToggle(task.id, task.done);
-    } else if (action === "reschedule" && data.taskId) {
-      // Open AI copilot to reschedule
-      window.__copilotOpen?.();
-      setTimeout(() => window.__copilotSend?.(`Reschedule task "${data.taskId}" to the best available slot`), 600);
-    }
-  };
-  return () => { delete window.__handleNotificationAction; };
-}, [tasks]);
-
   /* ── Realtime sync ── */
   useEffect(()=>{
     if (!session?.user) return;
@@ -810,7 +794,6 @@ useEffect(() => {
             onCompleteTask={handleToggle}
             onRescheduleTask={handleReschedule}
           />
-
         </div>
       </div>
     </>
