@@ -4,7 +4,7 @@ import {
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
   TrendingUp, Award, Coffee, X, Battery,
   Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff,
-  AlertTriangle
+  AlertTriangle, RotateCcw, Sparkles, Bot
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
@@ -288,6 +288,103 @@ function AddTaskSheet({ onClose, onAdd }) {
   );
 }
 
+/* ─── RESCHEDULE POPUP ────────────────────────────────────────────────────── */
+function ReschedulePopup({ task, onClose, onManual, onAI }) {
+  const sections = ["morning","afternoon","evening"];
+  const sectionIcons = { morning: Coffee, afternoon: Sun, evening: Moon };
+  const sectionColors = { morning: T.amber, afternoon: T.coral, evening: T.violetMid };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", backdropFilter:"blur(6px)", zIndex:200, animation:"backdropIn 0.2s ease" }}/>
+      {/* Sheet */}
+      <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, background:T.bg1, borderRadius:"24px 24px 0 0", border:`1px solid ${T.border}`, padding:"24px 20px 44px", zIndex:201, animation:"slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1)" }}>
+        {/* Handle */}
+        <div style={{ width:36, height:4, borderRadius:99, background:T.bg3, margin:"0 auto 20px" }}/>
+
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+          <div>
+            <p style={{ fontSize:20, fontWeight:800, color:T.text1, letterSpacing:"-0.4px" }}>Reschedule task</p>
+            <p style={{ fontSize:12, color:T.text2, marginTop:3 }}>"{task.title}"</p>
+          </div>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:99, border:`1px solid ${T.border}`, background:T.bg2, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <X size={15} color={T.text2}/>
+          </button>
+        </div>
+
+        {/* Two main options */}
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
+
+          {/* Manual reschedule */}
+          <div style={{ background:T.bg2, borderRadius:18, padding:"16px", border:`1px solid ${T.border}` }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+              <div style={{ width:36, height:36, borderRadius:11, background:"rgba(96,165,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <RotateCcw size={17} color="#60A5FA"/>
+              </div>
+              <div>
+                <p style={{ fontSize:14, fontWeight:700, color:T.text1 }}>Reschedule myself</p>
+                <p style={{ fontSize:12, color:T.text2, marginTop:1 }}>Pick a new time slot</p>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              {sections.map(s => {
+                const Icon = sectionIcons[s];
+                const color = sectionColors[s];
+                const isCurrent = task.section === s;
+                return (
+                  <button key={s} onClick={() => { onManual(task.id, s); onClose(); }}
+                    disabled={isCurrent}
+                    style={{
+                      flex:1, padding:"10px 6px", borderRadius:12,
+                      border: isCurrent ? `1px solid ${T.border}` : `1px solid ${color}44`,
+                      background: isCurrent ? T.bg3 : `${color}12`,
+                      cursor: isCurrent ? "not-allowed" : "pointer",
+                      opacity: isCurrent ? 0.4 : 1,
+                      transition:"all 0.18s",
+                    }}>
+                    <Icon size={14} color={isCurrent ? T.text3 : color} style={{ margin:"0 auto 4px", display:"block" }}/>
+                    <p style={{ fontSize:11, fontWeight:600, color: isCurrent ? T.text3 : color, textTransform:"capitalize" }}>{s}</p>
+                    {isCurrent && <p style={{ fontSize:9, color:T.text3, marginTop:1 }}>current</p>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* AI reschedule */}
+          <button onClick={() => { onAI(task); onClose(); }} style={{
+            display:"flex", alignItems:"center", gap:12,
+            background: T.gradViolet, borderRadius:18, padding:"16px",
+            border:"none", cursor:"pointer", textAlign:"left", width:"100%",
+            boxShadow:`0 8px 24px ${T.violetGlow}`,
+            transition:"all 0.18s",
+          }}
+            onMouseDown={e=>e.currentTarget.style.transform="scale(0.98)"}
+            onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+          >
+            <div style={{ width:40, height:40, borderRadius:13, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Sparkles size={19} color="#fff"/>
+            </div>
+            <div style={{ flex:1 }}>
+              <p style={{ fontSize:14, fontWeight:700, color:"#fff" }}>Let AI decide</p>
+              <p style={{ fontSize:12, color:"rgba(255,255,255,0.65)", marginTop:2, lineHeight:1.4 }}>
+                AI picks the best slot based on your energy patterns & schedule
+              </p>
+            </div>
+            <ChevronRight size={16} color="rgba(255,255,255,0.6)"/>
+          </button>
+        </div>
+
+        <p style={{ fontSize:11, color:T.text3, textAlign:"center" }}>
+          AI rescheduling uses your behaviour history for smarter suggestions
+        </p>
+      </div>
+    </>
+  );
+}
+
 /* ─── HOME VIEW ───────────────────────────────────────────────────────────── */
 function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile }) {
   const momentum = getMomentum(tasks);
@@ -295,15 +392,22 @@ function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile })
   const all      = flatTasks(tasks);
   const done     = all.filter(t=>t.done).length;
   const name     = userProfile?.name||"there";
+  const [showReschedule, setShowReschedule] = useState(false);
 
   // Detect missed tasks (belong to past time slots)
   const missedTasks = all.filter(isMissedTask);
 
   const handleFixMissed = () => {
-    // Open AI copilot and trigger auto-reschedule
     window.__copilotOpen?.();
     setTimeout(() => {
       window.__copilotSend?.(`I have ${missedTasks.length} missed task${missedTasks.length>1?"s":""} from earlier: ${missedTasks.map(t=>`"${t.title}"`).join(", ")}. Please automatically reschedule them to the best remaining time slots today based on my patterns and energy type.`);
+    }, 600);
+  };
+
+  const handleAIReschedule = (task) => {
+    window.__copilotOpen?.();
+    setTimeout(() => {
+      window.__copilotSend?.(`Please reschedule my task "${task.title}" (currently in ${task.section}) to the best time slot today based on my energy patterns, workload, and remaining tasks. Explain why you chose that slot.`);
     }, 600);
   };
 
@@ -348,16 +452,27 @@ function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile })
           <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.07)", pointerEvents:"none" }}/>
           <p style={{ fontSize:10, fontWeight:700, letterSpacing:"0.1em", color:"rgba(255,255,255,0.55)", textTransform:"uppercase", marginBottom:6 }}>Up next</p>
           <p style={{ fontSize:18, fontWeight:700, color:"#fff", marginBottom:8, lineHeight:1.3 }}>{nextTask.title}</p>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0 }}>
               <Clock size={12} color="rgba(255,255,255,0.65)"/>
               <span style={{ fontSize:12, color:"rgba(255,255,255,0.65)" }}>{nextTask.duration} min</span>
-              <span style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,0.45)", background:"rgba(255,255,255,0.1)", padding:"2px 8px", borderRadius:99, textTransform:"uppercase" }}>{nextTask.tag}</span>
+              <span style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,0.45)", background:"rgba(255,255,255,0.1)", padding:"2px 8px", borderRadius:99, textTransform:"uppercase", flexShrink:0 }}>{nextTask.tag}</span>
             </div>
-            <button onClick={()=>onToggle(nextTask.id,nextTask.done)}
-              style={{ display:"flex", alignItems:"center", gap:6, border:"none", background:"rgba(255,255,255,0.18)", borderRadius:10, padding:"8px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", backdropFilter:"blur(8px)", flexShrink:0 }}>
-              <CheckCircle size={13} color="#fff"/> Done
-            </button>
+            {/* Action buttons */}
+            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+              <button onClick={() => setShowReschedule(true)}
+                style={{ display:"flex", alignItems:"center", gap:5, border:"none", background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"8px 12px", color:"rgba(255,255,255,0.85)", fontSize:12, fontWeight:600, cursor:"pointer", backdropFilter:"blur(8px)", transition:"background 0.15s" }}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.12)"}>
+                <RotateCcw size={13} color="rgba(255,255,255,0.85)"/> Move
+              </button>
+              <button onClick={()=>onToggle(nextTask.id,nextTask.done)}
+                style={{ display:"flex", alignItems:"center", gap:5, border:"none", background:"rgba(255,255,255,0.22)", borderRadius:10, padding:"8px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", backdropFilter:"blur(8px)", transition:"background 0.15s" }}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.32)"}
+                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.22)"}>
+                <CheckCircle size={13} color="#fff"/> Done
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -405,6 +520,16 @@ function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile })
         <SLabel icon={Wind} label="Energy check" color={T.text2}/>
         <MoodSelector mood={mood} setMood={setMood}/>
       </Card>
+
+      {/* Reschedule popup */}
+      {showReschedule && nextTask && (
+        <ReschedulePopup
+          task={nextTask}
+          onClose={() => setShowReschedule(false)}
+          onManual={onReschedule}
+          onAI={handleAIReschedule}
+        />
+      )}
     </div>
   );
 }
