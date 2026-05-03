@@ -1,55 +1,56 @@
 // supabase/functions/send-notifications/index.ts
-// Uses Firebase Cloud Messaging V1 API (modern, non-legacy)
 
 import { serve }        from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { create, getNumericDate } from "https://deno.land/x/djwt@v2.8/mod.ts";
 
-const SUPABASE_URL         = Deno.env.get("https://zeauvlcubkunarvzvntf.supabase.co")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplYXV2bGN1Ymt1bmFydnp2bnRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzAxNzIwMywiZXhwIjoyMDkyNTkzMjAzfQ.qxh4ErkGtPqT99zW9C6oeUrvPij1msgEpSAZYpHD-QA")!;
-
-// From your Firebase service account JSON file — set as Supabase secrets
-const FCM_PROJECT_ID   = Deno.env.get("day-copilot")!;    // e.g. "day-copilot-12345"
-const FCM_CLIENT_EMAIL = Deno.env.get("firebase-adminsdk-fbsvc@day-copilot.iam.gserviceaccount.com")!;  // firebase-adminsdk-xxx@...
-const FCM_PRIVATE_KEY  = Deno.env.get("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCkdI8J13r27tg/\n4gQjstIkgQRBNJJ85Cf6gNFoOFlf/0unlPglBg6uS+4u5y1EcKbwYKDoruVZQSFU\n/BXxl/mM86SU5BaGICrVQ9wtBdq3ZeW/wX1zLZ6zFFFdlJzJ8yuWUN3E+AqPk44v\nP/6XhS1W4fJq+wezT0wEqIIjc8fD+zt5dzedsHacn5oQK6FD996qK1IkXT1QolfY\n+E+X8IyGgHoiGXB4x66WNY0STvsRom9ST5vThB2mhEhzzBFk/p6/o0EaGis3GTPW\ncRzjgOJFmY+l92kpjMg6hTiPoNlOYvIc5QYZRsO6gNcEeCNzB3gVVe4ieqdo3by4\nXEHKNtR/AgMBAAECggEABVJrFaskVhp4dw+LnQ5JZURBHf53AUaWIJ4uHtGHFfs1\nacl3guqZCQbH3onHRj3MQxA8Ovo3MCTIlb3cNwK+HCJ1alWeWZj5qeCuY8M4WoRm\n9zJ+AzBrIt/+wcZJB2j1iDfYVqWJzaVbBAq8qZjsQRQRaC304K8pkDrfyWtN2Koa\n1ms8WWzvtGmD/4jVcM553/MwMgj2qYEAnQQUC390QzhZ3RJbnE4+9HgTRxoBDd+Z\nbZHvcLVYthjQx6N7RbpoA0YOlUSeUfb3PZ6nmNQJzYbJTM0wSFN+VoTaCpS3jQRa\nHbanHZsSpQ+It4yllWr47OwJDPQmHu6s5IGCvRx4EQKBgQDay4NftBo2Bu/x0QP5\nt0xtKhvobLPeTgftNGmWQI2UD1tuLey0royqObWUeRPbPN1vWiDl8kK/PDi81IHr\n8O7Wt90aNkuP68zuVj2p9EmmqyEjgpW61aIGNMtTAV0UpDQu8bNPiyG4alTcS5qH\n+67SNkZZCwo0f8BVIt/BeUW+ZwKBgQDAa44Y4ljhaEYelFj648PPD7ZCHgeH63Cv\nM7AM2z/T1Bkm0gGyv+6dkCPbK9Y5BJLxzsq+4g+fyz4PST2hpPVvAZKLQCkOZXdN\nQekTrQKtWioymgYG1h8VO+2omjdKq/7mbPqzad0Spp9dUeyPEBDXgPX+89gIsDZf\n94HPhtg6KQKBgDWt/rJpTpD4zL/IZzBKH28dCLHSkaK2BE3XMRyTA+lShz0V+WAu\n/wX4mKsvtYZxfWaHd1DTSjr+/HCftqx7dS2q+I0oywspcCL9d62N6NACZmP+8tte\n9JyPMV9RE1QwITlvRW37la9YLy/JQMWiIzch58qK4dsViMuafclLBqh7AoGBAI+c\ndoyJ+s4Y9iSCkbqG3bCfyGamZPaDuTF6AU5HIOcnaLI5kPzpFN1SJADDQfqCOG3y\n6gz3SbP4i9P61N3c8TUtVkNJ2pqdDiKCK8P8n3/kSJRFsnPNwZsmhCUPHG9F2VP/\nSEk5nL77zvtmVokb84X0ASWMttMdOSf84UyTFrSpAoGAAlSxdvs3iO0zP9HXZDmr\nyoZCSuUSiIUPt4ThYFDfPcvGvFLBE/It+Aqy07rRIopsyYUUfrAxoCaZ8Wz0rGOs\ntPEinwf11nAiwiVbasuhI8JHQvxoQ+XXwVCNv+0VS+FgOjl+PQih16MZlIMITbba\nzlDApFdiMfN/6mAPuFLCXlo=\n-----END PRIVATE KEY-----\n")!;   // the private_key value
+const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")              ?? "";
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const FCM_PROJECT_ID       = Deno.env.get("FCM_PROJECT_ID")            ?? "";
+const FCM_CLIENT_EMAIL     = Deno.env.get("FCM_CLIENT_EMAIL")          ?? "";
+const RAW_KEY              = Deno.env.get("FCM_PRIVATE_KEY")           ?? "";
+const FCM_PRIVATE_KEY      = RAW_KEY.replace(/\\n/g, "\n");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-/* ─── Get OAuth2 access token for FCM V1 ─────────────────────────────────── */
+/* ─── OAuth2 token for FCM V1 ─────────────────────────────────────────────── */
 async function getFCMAccessToken(): Promise<string> {
-  // Clean up private key (Supabase secrets encode newlines as \n)
-  const privateKeyPem = FCM_PRIVATE_KEY.replace(/\\n/g, "\n");
-
-  const keyData = privateKeyPem
+  const pemBody = FCM_PRIVATE_KEY
     .replace("-----BEGIN PRIVATE KEY-----", "")
     .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\s/g, "");
+    .replace(/\s+/g, "");
 
-  const binaryKey = Uint8Array.from(atob(keyData), c => c.charCodeAt(0));
+  const binaryDer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
 
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryKey,
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8", binaryDer,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
+    false, ["sign"]
   );
 
-  // Create JWT for Google OAuth2
-  const jwt = await create(
-    { alg: "RS256", typ: "JWT" },
-    {
-      iss:   FCM_CLIENT_EMAIL,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
-      aud:   "https://oauth2.googleapis.com/token",
-      exp:   getNumericDate(3600),
-      iat:   getNumericDate(0),
-    },
-    cryptoKey
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }))
+    .replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+
+  const claims = btoa(JSON.stringify({
+    iss:   FCM_CLIENT_EMAIL,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud:   "https://oauth2.googleapis.com/token",
+    exp:   now + 3600,
+    iat:   now,
+  })).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+
+  const sigBuffer = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5", privateKey,
+    new TextEncoder().encode(`${header}.${claims}`)
   );
 
-  // Exchange JWT for access token
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuffer)))
+    .replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+
+  const jwt = `${header}.${claims}.${sigB64}`;
+
+  const res  = await fetch("https://oauth2.googleapis.com/token", {
     method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body:    new URLSearchParams({
@@ -63,22 +64,18 @@ async function getFCMAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-/* ─── Send one FCM V1 notification ───────────────────────────────────────── */
-async function sendNotification(
-  token:       string,
-  title:       string,
-  body:        string,
-  data:        Record<string, string>,
-  type:        string,
-  accessToken: string
+/* ─── Send FCM notification ───────────────────────────────────────────────── */
+async function sendFCM(
+  token: string, title: string, body: string,
+  data: Record<string,string>, type: string, accessToken: string
 ): Promise<boolean> {
   const actions =
     type === "followup" ? [
-      { action: "done",       title: "✅ Done"        },
-      { action: "reschedule", title: "🔄 Reschedule"  },
+      { action:"done",       title:"✅ Done"       },
+      { action:"reschedule", title:"🔄 Reschedule" },
     ] :
-    type === "morning"  ? [{ action: "open", title: "📋 Plan my day" }] :
-                          [{ action: "open", title: "▶️ Start task"  }];
+    type === "morning"  ? [{ action:"open", title:"📋 Plan my day" }] :
+                          [{ action:"open", title:"▶️ Start task"  }];
 
   const payload = {
     message: {
@@ -91,14 +88,7 @@ async function sendNotification(
       },
       apns: {
         headers: { "apns-priority": "10" },
-        payload: {
-          aps: {
-            alert:    { title, body },
-            sound:    "default",
-            badge:    1,
-            category: type === "followup" ? "TASK_FOLLOWUP" : "TASK_REMINDER",
-          },
-        },
+        payload: { aps: { alert: { title, body }, sound: "default", badge: 1 } },
       },
       webpush: {
         notification: {
@@ -119,78 +109,128 @@ async function sendNotification(
     `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
     {
       method:  "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+      body:    JSON.stringify(payload),
     }
   );
 
   const result = await res.json();
   if (!res.ok) { console.error("FCM error:", JSON.stringify(result)); return false; }
-  console.log("Sent:", result.name);
+  console.log("FCM sent:", result.name);
   return true;
 }
 
 /* ─── Main ────────────────────────────────────────────────────────────────── */
 serve(async () => {
   try {
+    if (!FCM_PROJECT_ID || !FCM_CLIENT_EMAIL || !FCM_PRIVATE_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Missing FCM secrets" }),
+        { headers: { "Content-Type": "application/json" }, status: 500 }
+      );
+    }
+
     const nowISO = new Date().toISOString();
 
-    // Fetch due unsent notifications
-    const { data: due, error } = await supabase
+    // Step 1 — Fetch due notifications (no join)
+    const { data: due, error: e1 } = await supabase
       .from("notification_schedule")
-      .select("*, push_tokens!inner(token)")
+      .select("id, user_id, task_id, task_title, task_tag, type, title, body")
       .eq("sent", false)
       .lte("send_at", nowISO)
       .limit(50);
 
-    if (error) throw error;
-    if (!due?.length) return new Response(
-      JSON.stringify({ message: "Nothing due", time: nowISO }),
-      { headers: { "Content-Type": "application/json" }, status: 200 }
-    );
+    if (e1) throw new Error(`Fetch notifications error: ${e1.message}`);
+    if (!due || due.length === 0) {
+      return new Response(
+        JSON.stringify({ message: "No notifications due", time: nowISO }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }
 
-    // Get access token once — reuse for all sends
+    // Step 2 — Get all unique user IDs from due notifications
+    const userIds = [...new Set(due.map(n => n.user_id))];
+
+    // Step 3 — Fetch push tokens for those users (separate query)
+    const { data: tokens, error: e2 } = await supabase
+      .from("push_tokens")
+      .select("user_id, token")
+      .in("user_id", userIds);
+
+    if (e2) throw new Error(`Fetch tokens error: ${e2.message}`);
+
+    // Build a map of user_id -> token for fast lookup
+    const tokenMap: Record<string, string> = {};
+    (tokens || []).forEach(t => { tokenMap[t.user_id] = t.token; });
+
+    console.log(`${due.length} notifications, ${Object.keys(tokenMap).length} tokens`);
+
+    if (Object.keys(tokenMap).length === 0) {
+      return new Response(
+        JSON.stringify({ message: "No push tokens found — users haven't enabled notifications yet" }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    // Step 4 — Get FCM access token once
     const accessToken = await getFCMAccessToken();
 
-    const results = await Promise.allSettled(
-      due.map(async notif => {
-        const token = notif.push_tokens?.token;
-        if (!token) return;
+    let sent = 0, failed = 0, skipped = 0;
 
-        await sendNotification(
-          token, notif.title, notif.body || "",
+    // Step 5 — Send each notification
+    for (const notif of due) {
+      const token = tokenMap[notif.user_id];
+
+      if (!token) {
+        console.warn(`No token for user ${notif.user_id}, skipping`);
+        skipped++;
+        // Mark sent so we don't retry forever
+        await supabase.from("notification_schedule")
+          .update({ sent: true, sent_at: new Date().toISOString() })
+          .eq("id", notif.id);
+        continue;
+      }
+
+      try {
+        const ok = await sendFCM(
+          token,
+          notif.title,
+          notif.body || "",
           {
-            type:      notif.type,
+            type:      notif.type       || "",
             taskId:    notif.task_id    || "",
             taskTitle: notif.task_title || "",
             taskTag:   notif.task_tag   || "",
           },
-          notif.type, accessToken
+          notif.type,
+          accessToken
         );
 
-        // Always mark sent to avoid retrying failed ones infinitely
-        await supabase
-          .from("notification_schedule")
+        await supabase.from("notification_schedule")
           .update({ sent: true, sent_at: new Date().toISOString() })
           .eq("id", notif.id);
-      })
-    );
 
-    const sent   = results.filter(r => r.status === "fulfilled").length;
-    const failed = results.filter(r => r.status === "rejected").length;
+        ok ? sent++ : failed++;
+
+      } catch(e) {
+        console.error("Send error for notif", notif.id, e);
+        failed++;
+        await supabase.from("notification_schedule")
+          .update({ sent: true, sent_at: new Date().toISOString() })
+          .eq("id", notif.id);
+      }
+    }
 
     return new Response(
-      JSON.stringify({ sent, failed, total: due.length }),
+      JSON.stringify({ sent, failed, skipped, total: due.length }),
       { headers: { "Content-Type": "application/json" }, status: 200 }
     );
 
   } catch(e) {
-    console.error("Error:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("Fatal:", msg);
     return new Response(
-      JSON.stringify({ error: String(e) }),
+      JSON.stringify({ error: msg }),
       { headers: { "Content-Type": "application/json" }, status: 500 }
     );
   }
