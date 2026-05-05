@@ -18,6 +18,7 @@ import {
   acceptSuggestions, dismissSuggestions,
   fetchTaskHistory, fetchRecurringPatterns, TODAY
 } from "./dailyManager";
+import { scheduleLocalNotifications, initPushNotifications } from './notifications';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -879,6 +880,30 @@ export default function App() {
       .subscribe();
     return ()=>supabase.removeChannel(channel);
   },[session]);
+
+  /* ── Push notification init ── */
+  useEffect(() => {
+    if (!session?.user || !onboardingDone) return;
+    initPushNotifications(session.user.id);
+  }, [session, onboardingDone]);
+
+  /* ── Re-schedule notifications when tasks change ── */
+useEffect(() => {
+  const allTasks = Object.values(tasks).flat();
+  if (!allTasks.length) return;
+
+  scheduleLocalNotifications(
+    tasks,
+    handleToggle,
+    (task) => {
+      window.__copilotOpen?.();
+      setTimeout(() => {
+        window.__copilotSend?.(`Please reschedule "${task.title}" to the best remaining slot today.`);
+      }, 600);
+    }
+  );
+}, [tasks]);
+
 
   const loadTasks = useCallback(async()=>{
     if (!session?.user) return;

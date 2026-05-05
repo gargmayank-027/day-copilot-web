@@ -21,7 +21,7 @@ const FIREBASE_CONFIG = {
 };
 
 // Your VAPID key from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
-const VAPID_KEY = "YOUR_VAPID_KEY_HERE";
+const VAPID_KEY = import.meta.env.VITE_VAPID_KEY;
 
 // ── Init Firebase ──
 let app, messaging;
@@ -256,4 +256,77 @@ export async function disablePushNotifications(userId) {
   if (!userId) return;
   await supabase.from('push_tokens').delete().eq('user_id', userId);
   await supabase.from('notification_schedule').delete().eq('user_id', userId).eq('sent', false);
+}
+
+const scheduledTimers = new Map(); // track so we can clear them
+
+export function scheduleLocalNotifications(tasks, onDone, onReschedule) {
+  // Clear old timers
+  scheduledTimers.forEach(t => clearTimeout(t));
+  scheduledTimers.clear();
+
+  const now = new Date();
+  const sectionTimes = {
+    morning:   { h: 9,  m: 0 },
+    afternoon: { h: 13, m: 0 },
+    evening:   { h: 18, m: 0 },
+  };
+
+  Object.values(tasks).flat().filter(t => !t.done).forEach(task => {
+    const base = sectionTimes[task.section] || sectionTimes.morning;
+
+    // 1️⃣ Reminder — 10 min before section start
+    const reminderTime = new Date();
+    reminderTime.setHours(base.h, base.m - 10, 0, 0);
+    const reminderMs = reminderTime - now;
+
+    if (reminderMs > 0) {
+      const t1 = setTimeout(() => {
+        showNotification(
+          `⏰ Up next: ${task.title}`,
+          `Starting in 10 minutes · ${task.duration} min`,
+          { task, type: 'reminder' },
+          null
+        );
+      }, reminderMs);
+      scheduledTimers.set(`reminder-${task.id}`, t1);
+    }
+
+    // 2️⃣ Follow-up — after task duration ends
+    const followupTime = new Date();
+    followupTime.setHours(base.h, base.m + task.duration, 0, 0);
+    const followupMs = followupTime - now;
+
+    if (followupMs > 0) {
+      const t2 = setTimeout(() => {
+        showNotification(
+          `Did you finish "${task.title}"?`,
+          'Mark it done or reschedule 👇',
+          { task, type: 'followup' },
+          [
+            { label: '✅ Done',       action: () => onDone(task.id, false) },
+            { label: '🔄 Reschedule', action: () => onReschedule(task)     },
+          ]
+        );
+      }, followupMs);
+      scheduledTimers.set(`followup-${task.id}`, t2);
+    }
+  });
+}
+
+function showNotification(title, body, data, actions) {
+  // If app is open → use in-app toast with action buttons
+  window.__showNotificationToast?.({ title, body, data, actions });
+
+  // Also try native notification (works when tab is in background)
+  if (Notification.permission === 'granted') {
+    const notif = new Notification(title, {
+      body,
+      icon: '/icon-192.png',
+      tag: data.task?.id,
+    });
+    // Native notifications can't have action buttons on all browsers
+    // so the in-app toast handles that UX
+    notif.onclick = () => window.focus();
+  }
 }
