@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
@@ -840,15 +840,26 @@ export default function App() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [showSuggestions,    setShowSuggestions]    = useState(false);
 
+  // Stable refs to avoid stale closures in effects
+  const sessionRef     = useRef(session);
+  const moodRef        = useRef(mood);
+  const userProfileRef = useRef(userProfile);
+  useEffect(() => { sessionRef.current = session; },     [session]);
+  useEffect(() => { moodRef.current = mood; },           [mood]);
+  useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
+
+  // Track whether new-day logic has already run this mount
+  const newDayRan = useRef(false);
+
   /* ── Auth ── */
   useEffect(() => {
     supabase.auth.getSession().then(({data:{session}})=>{ setSession(session); setAuthChecked(true); });
     const {data:{subscription}} = supabase.auth.onAuthStateChange((_,session)=>{
       setSession(session);
-      if (!session) { setTasks({morning:[],afternoon:[],evening:[]}); setOnboardingDone(false); setUserProfile(null); }
+      if (!session) { setTasks({morning:[],afternoon:[],evening:[]}); setOnboardingDone(false); setUserProfile(null); newDayRan.current = false; }
     });
     return ()=>subscription.unsubscribe();
-  },[]);
+  },[]); // runs once
 
   /* ── Onboarding + profile ── */
   useEffect(()=>{
@@ -856,21 +867,32 @@ export default function App() {
     setCheckingOnboarding(true);
     supabase.from("user_profiles").select("*").eq("id",session.user.id).single()
       .then(({data})=>{ setUserProfile(data||null); setOnboardingDone(data?.onboarding_done||false); setCheckingOnboarding(false); });
-  },[session]);
+  },[session?.user?.id]); // only re-run when user ID changes, not the whole session object
 
   /* ── Load today's tasks ── */
-  useEffect(()=>{
-    if (session?.user&&onboardingDone) loadTasks();
-  },[session,onboardingDone]);
+  const loadTasks = useCallback(async()=>{
+    const s = sessionRef.current;
+    if (!s?.user) return;
+    setLoadingTasks(true);
+    const rows = await loadTodaysTasks(s.user.id);
+    setTasks(groupBySection(rows));
+    setLoadingTasks(false);
+  },[]); // stable - uses ref
 
-  /* ── New day detection + suggestions ── */
   useEffect(()=>{
-    if (!session?.user||!onboardingDone||!userProfile) return;
+    if (session?.user && onboardingDone) loadTasks();
+  },[session?.user?.id, onboardingDone]); // stable primitive dep
+
+  /* ── New day detection + suggestions (runs once per mount when ready) ── */
+  useEffect(()=>{
+    if (!session?.user || !onboardingDone || !userProfile) return;
+    if (newDayRan.current) return;
+    newDayRan.current = true;
     if (isNewDay()) {
       markDayOpened();
       handleNewDay();
     }
-  },[session, onboardingDone, userProfile]);
+  },[session?.user?.id, onboardingDone, userProfile?.id]); // stable primitive deps
 
   /* ── Realtime sync ── */
   useEffect(()=>{
@@ -879,21 +901,23 @@ export default function App() {
       .on("postgres_changes",{event:"*",schema:"public",table:"tasks",filter:`user_id=eq.${session.user.id}`},()=>loadTasks())
       .subscribe();
     return ()=>supabase.removeChannel(channel);
-  },[session]);
+  },[session?.user?.id]); // stable primitive dep
 
   /* ── Push notification init ── */
   useEffect(() => {
     if (!session?.user || !onboardingDone) return;
     initPushNotifications(session.user.id);
-  }, [session, onboardingDone]);
+  }, [session?.user?.id, onboardingDone]); // stable primitive dep
 
   /* ── Re-schedule notifications when tasks change ── */
+  // Use a ref for handleToggle to avoid listing it as a dep and causing loops
+  const handleToggleRef = useRef(null);
   useEffect(() => {
     const allTasks = Object.values(tasks).flat();
     if (!allTasks.length) return;
     scheduleLocalNotifications(
       tasks,
-      handleToggle,
+      (id, done) => handleToggleRef.current?.(id, done),
       (task) => {
         window.__copilotOpen?.();
         setTimeout(() => {
@@ -901,25 +925,20 @@ export default function App() {
         }, 600);
       }
     );
-  }, [tasks]);
-
-  const loadTasks = useCallback(async()=>{
-    if (!session?.user) return;
-    setLoadingTasks(true);
-    const rows = await loadTodaysTasks(session.user.id);
-    setTasks(groupBySection(rows));
-    setLoadingTasks(false);
-  },[session]);
+  }, [tasks]); // only re-run when tasks actually change
 
   const handleNewDay = async () => {
+    const s = sessionRef.current;
+    const profile = userProfileRef.current;
+    if (!s?.user) return;
     setSuggestionsLoading(true);
     setShowSuggestions(true);
     try {
-      let existing = await fetchDailySuggestions(session.user.id);
+      let existing = await fetchDailySuggestions(s.user.id);
       if (!existing || existing.status === "pending") {
         existing = await generateDailySuggestions(
-          session.user.id,
-          userProfile,
+          s.user.id,
+          profile,
           import.meta.env.VITE_GEMINI_KEY
         );
       }
@@ -936,42 +955,64 @@ export default function App() {
   };
 
   /* ── Handlers ── */
-  const handleToggle = async(id, currentDone)=>{
-    const task = flatTasks(tasks).find(t=>t.id===id);
-    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].map(t=>t.id===id?{...t,done:!currentDone}:t); return u; });
-    await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
-    if (task) await logBehaviour(session.user.id, currentDone?"skipped":"completed", task, mood);
-  };
-
-  const handleAdd = async(section, taskData)=>{
-    if (!session?.user) return;
-    try {
-      const newTask = await addTaskToday(session.user.id, {...taskData, section});
-      setTasks(prev=>({...prev,[section]:[...prev[section],newTask]}));
-      await logBehaviour(session.user.id,"added",newTask,mood);
-    } catch(e) { console.error("Add task error:", e); }
-  };
-
-  const handleDelete = async(id)=>{
-    const task = flatTasks(tasks).find(t=>t.id===id);
-    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].filter(t=>t.id!==id); return u; });
-    await supabase.from("tasks").delete().eq("id",id);
-    if (task) await logBehaviour(session.user.id,"deleted",task,mood);
-  };
-
-  const handleReschedule = async(id, newSection)=>{
-    const task = flatTasks(tasks).find(t=>t.id===id);
+  const handleToggle = useCallback(async(id, currentDone)=>{
+    const s = sessionRef.current;
+    const m = moodRef.current;
     setTasks(prev=>{
-      const u={morning:[],afternoon:[],evening:[]};
-      for(const s in prev) prev[s].forEach(t=>{ if(t.id===id) u[newSection].push({...t,section:newSection}); else u[s].push(t); });
+      const u={};
+      for(const sec in prev) u[sec]=prev[sec].map(t=>t.id===id?{...t,done:!currentDone}:t);
       return u;
     });
-    await supabase.from("tasks").update({section:newSection,reschedule_count:(task?.reschedule_count||0)+1}).eq("id",id);
-    if (task) await logBehaviour(session.user.id,"rescheduled",{...task,section:newSection},mood);
-  };
+    const task = flatTasks(sessionRef.current ? {} : {});
+    await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
+    // logBehaviour requires the task object; read from DB isn't needed since we only need id
+    // behaviour logging is best-effort
+    try {
+      const {data} = await supabase.from("tasks").select("*").eq("id",id).single();
+      if (data && s?.user) await logBehaviour(s.user.id, currentDone?"skipped":"completed", data, m);
+    } catch {}
+  },[]); // stable
 
-  const handleAcceptSuggestions = async(picked)=>{
-    const newTasks = await acceptSuggestions(session.user.id, picked);
+  // Keep ref in sync
+  useEffect(() => { handleToggleRef.current = handleToggle; }, [handleToggle]);
+
+  const handleAdd = useCallback(async(section, taskData)=>{
+    const s = sessionRef.current;
+    const m = moodRef.current;
+    if (!s?.user) return;
+    try {
+      const newTask = await addTaskToday(s.user.id, {...taskData, section});
+      setTasks(prev=>({...prev,[section]:[...prev[section],newTask]}));
+      await logBehaviour(s.user.id,"added",newTask,m);
+    } catch(e) { console.error("Add task error:", e); }
+  },[]); // stable
+
+  const handleDelete = useCallback(async(id)=>{
+    const s = sessionRef.current;
+    const m = moodRef.current;
+    setTasks(prev=>{ const u={}; for(const sec in prev) u[sec]=prev[sec].filter(t=>t.id!==id); return u; });
+    const {data:task} = await supabase.from("tasks").select("*").eq("id",id).single();
+    await supabase.from("tasks").delete().eq("id",id);
+    if (task && s?.user) await logBehaviour(s.user.id,"deleted",task,m);
+  },[]); // stable
+
+  const handleReschedule = useCallback(async(id, newSection)=>{
+    const s = sessionRef.current;
+    const m = moodRef.current;
+    let movedTask = null;
+    setTasks(prev=>{
+      const u={morning:[],afternoon:[],evening:[]};
+      for(const sec in prev) prev[sec].forEach(t=>{ if(t.id===id){ movedTask=t; u[newSection].push({...t,section:newSection}); } else u[sec].push(t); });
+      return u;
+    });
+    await supabase.from("tasks").update({section:newSection,reschedule_count:(movedTask?.reschedule_count||0)+1}).eq("id",id);
+    if (movedTask && s?.user) await logBehaviour(s.user.id,"rescheduled",{...movedTask,section:newSection},m);
+  },[]); // stable
+
+  const handleAcceptSuggestions = useCallback(async(picked)=>{
+    const s = sessionRef.current;
+    if (!s?.user) return;
+    const newTasks = await acceptSuggestions(s.user.id, picked);
     const grouped = groupBySection(newTasks);
     setTasks(prev=>({
       morning:   [...prev.morning,   ...(grouped.morning||[])],
@@ -980,28 +1021,33 @@ export default function App() {
     }));
     setShowSuggestions(false);
     setSuggestions(null);
-  };
+  },[]); // stable
 
-  const handleDismissSuggestions = async()=>{
-    if (session?.user && suggestions?.id) {
-      await dismissSuggestions(session.user.id, suggestions.id);
-    }
+  const handleDismissSuggestions = useCallback(async()=>{
+    const s = sessionRef.current;
+    setSuggestions(prev => {
+      if (s?.user && prev?.id) dismissSuggestions(s.user.id, prev.id);
+      return null;
+    });
     setShowSuggestions(false);
-    setSuggestions(null);
-  };
+  },[]); // stable
 
-  const handleCalendarAddTasks = async(calTasks)=>{
-    for (const t of calTasks) {
-      await handleAdd(t.section||"morning", t);
-    }
-  };
+  const handleCalendarAddTasks = useCallback(async(calTasks)=>{
+    for (const t of calTasks) await handleAdd(t.section||"morning", t);
+  },[handleAdd]);
 
-  const handleOnboardingComplete = async()=>{
+  const handleOnboardingComplete = useCallback(async()=>{
+    const s = sessionRef.current;
     setOnboardingDone(true);
     setCheckingOnboarding(false);
-    const {data} = await supabase.from("user_profiles").select("*").eq("id",session.user.id).single();
+    if (!s?.user) return;
+    const {data} = await supabase.from("user_profiles").select("*").eq("id",s.user.id).single();
     setUserProfile(data||null);
-  };
+  },[]); // stable
+
+  const handleSignOut = useCallback(()=>{
+    setSession(null); setOnboardingDone(false); setUserProfile(null); newDayRan.current = false;
+  },[]);
 
   /* ── Render gates ── */
   if (!authChecked || (session && checkingOnboarding)) return <LoadingScreen/>;
@@ -1045,7 +1091,7 @@ export default function App() {
           <ProfileView
             userProfile={userProfile}
             userEmail={session?.user?.email}
-            onSignOut={()=>{ setSession(null); setOnboardingDone(false); setUserProfile(null); }}
+            onSignOut={handleSignOut}
             onCalendarAddTasks={handleCalendarAddTasks}
           />
         )}
