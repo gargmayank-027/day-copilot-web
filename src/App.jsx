@@ -922,7 +922,7 @@ useEffect(() => {
         existing = await generateDailySuggestions(
           session.user.id,
           userProfile,
-          "AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs"
+          import.meta.env.VITE_GEMINI_KEY
         );
       }
       if (existing?.status === "pending") {
