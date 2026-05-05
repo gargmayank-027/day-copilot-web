@@ -11,6 +11,7 @@ import Onboarding from "./Onboarding";
 import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
 import MorningSuggestions from "./MorningSuggestions";
+import CalendarIntegration from "./CalendarIntegration";
 import {
   isNewDay, markDayOpened, loadTodaysTasks, addTaskToday,
   fetchDailySuggestions, generateDailySuggestions,
@@ -478,10 +479,10 @@ function HomeView({ tasks, onToggle, onReschedule, mood, setMood, userProfile, s
           <p style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>{all.filter(t=>!t.done).reduce((s,t)=>s+t.duration,0)}m</p>
           <p style={{ fontSize:9, color:T.violetMid, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Left</p>
         </div>
-        <div style={{ background:`${momentum>=70?T.green:momentum>=40?T.amber:T.red}15`, borderRadius:14, padding:"10px 8px 8px", border:`1px solid ${momentum>=70?T.green:momentum>=40?T.amber:T.red}22`, textAlign:"center" }}>
-          <Flame size={14} color={momentum>=70?T.green:momentum>=40?T.amber:T.red} style={{ marginBottom:4 }}/>
+        <div style={{ background:`${getMomentum(tasks)>=70?T.green:getMomentum(tasks)>=40?T.amber:T.red}15`, borderRadius:14, padding:"10px 8px 8px", border:`1px solid ${getMomentum(tasks)>=70?T.green:getMomentum(tasks)>=40?T.amber:T.red}22`, textAlign:"center" }}>
+          <Flame size={14} color={getMomentum(tasks)>=70?T.green:getMomentum(tasks)>=40?T.amber:T.red} style={{ marginBottom:4 }}/>
           <p style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>{momentum}%</p>
-          <p style={{ fontSize:9, color:momentum>=70?T.green:momentum>=40?T.amber:T.red, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Momentum</p>
+          <p style={{ fontSize:9, color:getMomentum(tasks)>=70?T.green:getMomentum(tasks)>=40?T.amber:T.red, fontWeight:700, letterSpacing:"0.04em", textTransform:"uppercase", marginTop:1 }}>Momentum</p>
         </div>
       </div>
 
@@ -561,7 +562,6 @@ function InsightsView({ tasks, mood, userId }) {
   const MIcon=mood==="high"?Smile:mood==="low"?Frown:Meh;
   const mColor=mood==="high"?T.green:mood==="low"?T.red:T.amber;
 
-  // Group history by date
   const historyByDate = {};
   history.forEach(h => {
     if (!historyByDate[h.task_date]) historyByDate[h.task_date] = [];
@@ -575,7 +575,6 @@ function InsightsView({ tasks, mood, userId }) {
         <h1 style={{ fontSize:28, fontWeight:800, color:T.text1, letterSpacing:"-0.8px" }}>Insights</h1>
       </div>
 
-      {/* Today stats */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
         <StatCard label="Tasks done"  value={`${done}/${all.length}`} icon={CheckCircle} color={T.green}     soft={T.greenSoft}/>
         <StatCard label="Momentum"    value={`${momentum}%`}          icon={TrendingUp}  color={T.violetMid} soft={T.violetSoft}/>
@@ -583,7 +582,6 @@ function InsightsView({ tasks, mood, userId }) {
         <StatCard label="Day streak"  value="4 days"                  icon={Flame}       color={T.amber}     soft={T.amberSoft}/>
       </div>
 
-      {/* Mood */}
       <Card>
         <SLabel icon={MIcon} label="Today's mood" color={mColor}/>
         <div style={{ display:"flex", alignItems:"center", gap:14 }}>
@@ -597,7 +595,6 @@ function InsightsView({ tasks, mood, userId }) {
         </div>
       </Card>
 
-      {/* Recurring patterns */}
       {patterns.length>0&&(
         <Card>
           <SLabel icon={RotateCcw} label="Your recurring habits"/>
@@ -620,7 +617,6 @@ function InsightsView({ tasks, mood, userId }) {
         </Card>
       )}
 
-      {/* Task history */}
       <Card>
         <SLabel icon={History} label="Task history (7 days)"/>
         {loadingHistory&&<div style={{ textAlign:"center", padding:"16px 0" }}><Spinner/></div>}
@@ -649,7 +645,6 @@ function InsightsView({ tasks, mood, userId }) {
         ))}
       </Card>
 
-      {/* Category breakdown */}
       {Object.keys(byTag).length>0&&(
         <Card>
           <SLabel icon={BarChart2} label="Today by category"/>
@@ -687,7 +682,7 @@ function InsightsView({ tasks, mood, userId }) {
 }
 
 /* ─── PROFILE VIEW ────────────────────────────────────────────────────────── */
-function ProfileView({ userProfile, userEmail, onSignOut }) {
+function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks }) {
   const [focusDur,setFocusDur]=useState(userProfile?.focus_duration||45);
   const [breakDur,setBreakDur]=useState(10);
   const [notifs,setNotifs]=useState(true);
@@ -716,6 +711,16 @@ function ProfileView({ userProfile, userEmail, onSignOut }) {
           </div>
         ))}
       </div>
+
+      {/* ── Google Calendar Integration ── */}
+      <div style={{ marginBottom:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+          <Calendar size={13} color={T.text2} strokeWidth={2}/>
+          <span style={{ fontSize:11, fontWeight:700, color:T.text2, letterSpacing:"0.08em", textTransform:"uppercase" }}>Integrations</span>
+        </div>
+        <CalendarIntegration onAddTasks={onCalendarAddTasks}/>
+      </div>
+
       {userProfile?.work_start&&(
         <Card>
           <SLabel icon={Clock} label="Your Schedule"/>
@@ -828,7 +833,6 @@ export default function App() {
   const [showAdd,            setShowAdd]            = useState(false);
   const [loadingTasks,       setLoadingTasks]       = useState(false);
 
-  // Daily suggestions state
   const [suggestions,        setSuggestions]        = useState(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [showSuggestions,    setShowSuggestions]    = useState(false);
@@ -861,7 +865,6 @@ export default function App() {
     if (!session?.user||!onboardingDone||!userProfile) return;
     if (isNewDay()) {
       markDayOpened();
-      // Load existing suggestions or generate new ones
       handleNewDay();
     }
   },[session, onboardingDone, userProfile]);
@@ -887,20 +890,17 @@ export default function App() {
     setSuggestionsLoading(true);
     setShowSuggestions(true);
     try {
-      // Check if suggestions already generated today
       let existing = await fetchDailySuggestions(session.user.id);
       if (!existing || existing.status === "pending") {
-        // Generate new ones
         existing = await generateDailySuggestions(
           session.user.id,
           userProfile,
-          "AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs" // ← replace with your key
+          "AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs"
         );
       }
       if (existing?.status === "pending") {
         setSuggestions(existing);
       } else {
-        // Already accepted/dismissed today
         setShowSuggestions(false);
       }
     } catch(e) {
@@ -947,7 +947,6 @@ export default function App() {
 
   const handleAcceptSuggestions = async(picked)=>{
     const newTasks = await acceptSuggestions(session.user.id, picked);
-    // Merge into current tasks
     const grouped = groupBySection(newTasks);
     setTasks(prev=>({
       morning:   [...prev.morning,   ...(grouped.morning||[])],
@@ -956,7 +955,6 @@ export default function App() {
     }));
     setShowSuggestions(false);
     setSuggestions(null);
-    // Log behaviour
     for (const t of newTasks) {
       await logBehaviour(session.user.id,"added",t,mood);
     }
@@ -966,6 +964,24 @@ export default function App() {
     await dismissSuggestions(session.user.id);
     setShowSuggestions(false);
     setSuggestions(null);
+  };
+
+  /* ── Calendar: add events as tasks ── */
+  const handleCalendarAddTasks = async (calEvents) => {
+    for (const ev of calEvents) {
+      const { section, title, duration, tag, source, sourceIcon, startTime, htmlLink } = ev;
+      try {
+        const newTask = await addTaskToday(session.user.id, {
+          title, done: false, duration, tag, section,
+          source: source || "google_calendar",
+          sourceIcon: sourceIcon || "📅",
+          startTime: startTime || null,
+          htmlLink: htmlLink || null,
+        });
+        setTasks(prev => ({ ...prev, [section]: [...prev[section], newTask] }));
+        await logBehaviour(session.user.id, "added", newTask, mood);
+      } catch(e) { console.error("Calendar task add error:", e); }
+    }
   };
 
   const handleOnboardingComplete = async()=>{
@@ -990,7 +1006,12 @@ export default function App() {
               />,
     planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
     insights: <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>,
-    profile:  <ProfileView  userProfile={userProfile} userEmail={session.user.email} onSignOut={()=>setSession(null)}/>,
+    profile:  <ProfileView
+                userProfile={userProfile}
+                userEmail={session.user.email}
+                onSignOut={()=>setSession(null)}
+                onCalendarAddTasks={handleCalendarAddTasks}
+              />,
   };
 
   return (
@@ -1000,27 +1021,22 @@ export default function App() {
         <div style={{ width:"100%",maxWidth:430,position:"relative" }}>
           {loadingTasks&&(
             <div style={{ position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:99,padding:"8px 16px",display:"flex",alignItems:"center",gap:8,zIndex:50 }}>
-              <Spinner/><span style={{ fontSize:12,color:T.text2,fontWeight:500 }}>Syncing...</span>
+              <Spinner size={14}/><span style={{ fontSize:12,color:T.text2,fontWeight:600 }}>Syncing…</span>
             </div>
           )}
-          <div style={{ minHeight:"100vh",padding:"28px 16px 96px",overflowX:"hidden" }}>
-            <div key={tab} style={{ animation:"fadeUp 0.25s ease both" }}>
-              {screens[tab]}
-            </div>
+          <div style={{ padding:"52px 16px 90px" }}>
+            {screens[tab]}
           </div>
-          <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
-          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
           <AICopilot
-            apiKey="AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs"
-            userId={session.user.id}
+            userId={session?.user?.id}
             userProfile={userProfile}
             tasks={tasks}
             mood={mood}
-            onAddTask={handleAdd}
-            onDeleteTask={handleDelete}
-            onCompleteTask={handleToggle}
-            onRescheduleTask={handleReschedule}
+            onReschedule={handleReschedule}
+            geminiKey="AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs"
           />
+          <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
+          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
         </div>
       </div>
     </>
