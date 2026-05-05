@@ -19,6 +19,8 @@ import {
   fetchTaskHistory, fetchRecurringPatterns, TODAY
 } from "./dailyManager";
 
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
 /* ─── THEME ───────────────────────────────────────────────────────────────── */
 const T = {
   bg0:"#09090F", bg1:"#111118", bg2:"#18181F", bg3:"#202028",
@@ -1033,7 +1035,7 @@ export default function App() {
             tasks={tasks}
             mood={mood}
             onReschedule={handleReschedule}
-            geminiKey="AIzaSyAHaueiEVtFl2r1zT9SAa1HI9MqtIw1rXs"
+            apiKey={GEMINI_KEY}
           />
           <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
           {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
