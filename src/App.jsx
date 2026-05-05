@@ -888,22 +888,20 @@ export default function App() {
   }, [session, onboardingDone]);
 
   /* ── Re-schedule notifications when tasks change ── */
-useEffect(() => {
-  const allTasks = Object.values(tasks).flat();
-  if (!allTasks.length) return;
-
-  scheduleLocalNotifications(
-    tasks,
-    handleToggle,
-    (task) => {
-      window.__copilotOpen?.();
-      setTimeout(() => {
-        window.__copilotSend?.(`Please reschedule "${task.title}" to the best remaining slot today.`);
-      }, 600);
-    }
-  );
-}, [tasks]);
-
+  useEffect(() => {
+    const allTasks = Object.values(tasks).flat();
+    if (!allTasks.length) return;
+    scheduleLocalNotifications(
+      tasks,
+      handleToggle,
+      (task) => {
+        window.__copilotOpen?.();
+        setTimeout(() => {
+          window.__copilotSend?.(`Please reschedule "${task.title}" to the best remaining slot today.`);
+        }, 600);
+      }
+    );
+  }, [tasks]);
 
   const loadTasks = useCallback(async()=>{
     if (!session?.user) return;
@@ -982,90 +980,93 @@ useEffect(() => {
     }));
     setShowSuggestions(false);
     setSuggestions(null);
-    for (const t of newTasks) {
-      await logBehaviour(session.user.id,"added",t,mood);
-    }
   };
 
   const handleDismissSuggestions = async()=>{
-    await dismissSuggestions(session.user.id);
+    if (session?.user && suggestions?.id) {
+      await dismissSuggestions(session.user.id, suggestions.id);
+    }
     setShowSuggestions(false);
     setSuggestions(null);
   };
 
-  /* ── Calendar: add events as tasks ── */
-  const handleCalendarAddTasks = async (calEvents) => {
-    for (const ev of calEvents) {
-      const { section, title, duration, tag, source, sourceIcon, startTime, htmlLink } = ev;
-      try {
-        const newTask = await addTaskToday(session.user.id, {
-          title, done: false, duration, tag, section,
-          source: source || "google_calendar",
-          sourceIcon: sourceIcon || "📅",
-          startTime: startTime || null,
-          htmlLink: htmlLink || null,
-        });
-        setTasks(prev => ({ ...prev, [section]: [...prev[section], newTask] }));
-        await logBehaviour(session.user.id, "added", newTask, mood);
-      } catch(e) { console.error("Calendar task add error:", e); }
+  const handleCalendarAddTasks = async(calTasks)=>{
+    for (const t of calTasks) {
+      await handleAdd(t.section||"morning", t);
     }
   };
 
   const handleOnboardingComplete = async()=>{
+    setOnboardingDone(true);
+    setCheckingOnboarding(false);
     const {data} = await supabase.from("user_profiles").select("*").eq("id",session.user.id).single();
-    setUserProfile(data); setOnboardingDone(true);
+    setUserProfile(data||null);
   };
 
   /* ── Render gates ── */
-  if (!authChecked)       return <LoadingScreen/>;
-  if (!session)           return <AuthScreen onAuth={setSession}/>;
-  if (checkingOnboarding) return <LoadingScreen/>;
-  if (!onboardingDone)    return <Onboarding userId={session.user.id} onComplete={handleOnboardingComplete}/>;
+  if (!authChecked || (session && checkingOnboarding)) return <LoadingScreen/>;
+  if (!session) return <AuthScreen onAuth={s=>setSession(s)}/>;
+  if (!onboardingDone) return (
+    <Onboarding
+      userId={session.user.id}
+      userEmail={session.user.email}
+      onComplete={handleOnboardingComplete}
+    />
+  );
 
-  const screens = {
-    home:     <HomeView
-                tasks={tasks} onToggle={handleToggle} onReschedule={handleReschedule}
-                mood={mood} setMood={setMood} userProfile={userProfile}
-                suggestions={showSuggestions?suggestions:null}
-                suggestionsLoading={suggestionsLoading}
-                onAcceptSuggestions={handleAcceptSuggestions}
-                onDismissSuggestions={handleDismissSuggestions}
-              />,
-    planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
-    insights: <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>,
-    profile:  <ProfileView
-                userProfile={userProfile}
-                userEmail={session.user.email}
-                onSignOut={()=>setSession(null)}
-                onCalendarAddTasks={handleCalendarAddTasks}
-              />,
-  };
-
+  /* ── Main app ── */
   return (
-    <>
+    <div style={{ fontFamily:"Outfit,sans-serif", background:T.bg0, minHeight:"100vh", maxWidth:430, margin:"0 auto", position:"relative" }}>
       <style>{GLOBAL_CSS}</style>
-      <div style={{ minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,-apple-system,sans-serif" }}>
-        <div style={{ width:"100%",maxWidth:430,position:"relative" }}>
-          {loadingTasks&&(
-            <div style={{ position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:99,padding:"8px 16px",display:"flex",alignItems:"center",gap:8,zIndex:50 }}>
-              <Spinner size={14}/><span style={{ fontSize:12,color:T.text2,fontWeight:600 }}>Syncing…</span>
-            </div>
-          )}
-          <div style={{ padding:"52px 16px 90px" }}>
-            {screens[tab]}
-          </div>
-          <AICopilot
-            userId={session?.user?.id}
-            userProfile={userProfile}
+
+      {/* Scrollable content */}
+      <div style={{ padding:"52px 16px 100px", overflowY:"auto", minHeight:"100vh" }}>
+        {tab==="home"&&(
+          <HomeView
             tasks={tasks}
-            mood={mood}
+            onToggle={handleToggle}
             onReschedule={handleReschedule}
-            apiKey={GEMINI_KEY}
+            mood={mood}
+            setMood={setMood}
+            userProfile={userProfile}
+            suggestions={showSuggestions ? suggestions : null}
+            suggestionsLoading={suggestionsLoading}
+            onAcceptSuggestions={handleAcceptSuggestions}
+            onDismissSuggestions={handleDismissSuggestions}
           />
-          <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
-          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
-        </div>
+        )}
+        {tab==="planner"&&(
+          <PlannerView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>
+        )}
+        {tab==="insights"&&(
+          <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>
+        )}
+        {tab==="profile"&&(
+          <ProfileView
+            userProfile={userProfile}
+            userEmail={session?.user?.email}
+            onSignOut={()=>{ setSession(null); setOnboardingDone(false); setUserProfile(null); }}
+            onCalendarAddTasks={handleCalendarAddTasks}
+          />
+        )}
       </div>
-    </>
+
+      {/* AI Copilot */}
+      <AICopilot
+        tasks={tasks}
+        mood={mood}
+        userProfile={userProfile}
+        userId={session?.user?.id}
+        onToggle={handleToggle}
+        onReschedule={handleReschedule}
+        onAdd={handleAdd}
+      />
+
+      {/* Add task sheet */}
+      {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
+
+      {/* Bottom nav */}
+      <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
+    </div>
   );
 }
