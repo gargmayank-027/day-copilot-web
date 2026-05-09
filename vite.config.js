@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Day Copilot',
         short_name: 'Day Copilot',
@@ -17,31 +17,50 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/',
+        start_url: '/?source=pwa',
+        id: '/',
+        categories: ['productivity', 'lifestyle'],
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
+            purpose: 'any',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
+            purpose: 'any',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'maskable',
+          },
+        ],
+        shortcuts: [
+          {
+            name: "Today's Tasks",
+            short_name: 'Tasks',
+            description: 'Jump straight to your task list',
+            url: '/?shortcut=tasks',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
           },
         ],
       },
       workbox: {
-        // Cache all assets
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Cache Supabase + Gemini API calls for offline resilience
         runtimeCaching: [
+          {
+            urlPattern: /^\/$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'start-url',
+              expiration: { maxEntries: 1, maxAgeSeconds: 60 * 60 * 24 },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
@@ -65,14 +84,14 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'weather-cache',
-              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 30 }, // 30 min
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],
       },
       devOptions: {
-        enabled: true, // Enable PWA in dev mode for testing
+        enabled: true,
       },
     }),
   ],
