@@ -12,6 +12,7 @@ import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
 import MorningSuggestions from "./MorningSuggestions";
 import CalendarIntegration from "./CalendarIntegration";
+import InstallPrompt from "./InstallPrompt";
 import {
   isNewDay, markDayOpened, loadTodaysTasks, addTaskToday,
   fetchDailySuggestions, generateDailySuggestions,
@@ -867,7 +868,7 @@ export default function App() {
     setCheckingOnboarding(true);
     supabase.from("user_profiles").select("*").eq("id",session.user.id).single()
       .then(({data})=>{ setUserProfile(data||null); setOnboardingDone(data?.onboarding_done||false); setCheckingOnboarding(false); });
-  },[session?.user?.id]); // only re-run when user ID changes, not the whole session object
+  },[session?.user?.id]); // only re-run when user ID changes
 
   /* ── Load today's tasks ── */
   const loadTasks = useCallback(async()=>{
@@ -910,7 +911,6 @@ export default function App() {
   }, [session?.user?.id, onboardingDone]); // stable primitive dep
 
   /* ── Re-schedule notifications when tasks change ── */
-  // Use a ref for handleToggle to avoid listing it as a dep and causing loops
   const handleToggleRef = useRef(null);
   useEffect(() => {
     const allTasks = Object.values(tasks).flat();
@@ -963,17 +963,13 @@ export default function App() {
       for(const sec in prev) u[sec]=prev[sec].map(t=>t.id===id?{...t,done:!currentDone}:t);
       return u;
     });
-    const task = flatTasks(sessionRef.current ? {} : {});
     await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
-    // logBehaviour requires the task object; read from DB isn't needed since we only need id
-    // behaviour logging is best-effort
     try {
       const {data} = await supabase.from("tasks").select("*").eq("id",id).single();
       if (data && s?.user) await logBehaviour(s.user.id, currentDone?"skipped":"completed", data, m);
     } catch {}
   },[]); // stable
 
-  // Keep ref in sync
   useEffect(() => { handleToggleRef.current = handleToggle; }, [handleToggle]);
 
   const handleAdd = useCallback(async(section, taskData)=>{
@@ -1064,6 +1060,9 @@ export default function App() {
   return (
     <div style={{ fontFamily:"Outfit,sans-serif", background:T.bg0, minHeight:"100vh", maxWidth:430, margin:"0 auto", position:"relative" }}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* PWA Install Prompt — shown to all users until installed or dismissed */}
+      <InstallPrompt />
 
       {/* Scrollable content */}
       <div style={{ padding:"52px 16px 100px", overflowY:"auto", minHeight:"100vh" }}>
