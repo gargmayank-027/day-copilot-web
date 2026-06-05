@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
@@ -12,7 +12,6 @@ import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
 import MorningSuggestions from "./MorningSuggestions";
 import CalendarIntegration from "./CalendarIntegration";
-import InstallPrompt from "./InstallPrompt";
 import {
   isNewDay, markDayOpened, loadTodaysTasks, addTaskToday,
   fetchDailySuggestions, generateDailySuggestions,
@@ -20,6 +19,7 @@ import {
   fetchTaskHistory, fetchRecurringPatterns, TODAY
 } from "./dailyManager";
 import { scheduleLocalNotifications, initPushNotifications } from './notifications';
+import NLPTaskInput from "./NLPTaskInput";
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -244,118 +244,204 @@ function MomentumBar({ pct }) {
 
 /* ─── ADD TASK SHEET ──────────────────────────────────────────────────────── */
 function AddTaskSheet({ onClose, onAdd }) {
+  const [mode, setMode] = useState("smart");
   const [title,setTitle]=useState("");
   const [dur,setDur]=useState("20");
   const [tag,setTag]=useState("work");
   const [section,setSection]=useState("morning");
   const [saving,setSaving]=useState(false);
-  const iStyle={ width:"100%", background:T.bg2, border:`1px solid ${T.border}`, borderRadius:14, padding:"13px 14px", fontSize:14, color:T.text1, outline:"none", transition:"border 0.2s" };
 
-  const handleAdd=async()=>{
+  const iStyle = {
+    width:"100%",
+    background:T.bg2,
+    border:`1px solid ${T.border}`,
+    borderRadius:14,
+    padding:"13px 14px",
+    fontSize:14,
+    color:T.text1,
+    outline:"none",
+    transition:"border 0.2s"
+  };
+
+  const handleManualAdd = async () => {
     if (!title.trim()) return;
     setSaving(true);
-    await onAdd(section,{title:title.trim(),done:false,duration:parseInt(dur)||20,tag,section});
-    setSaving(false); onClose();
+    await onAdd(section, {
+      title: title.trim(),
+      done: false,
+      duration: parseInt(dur) || 20,
+      tag,
+      section
+    });
+    setSaving(false);
+    onClose();
+  };
+
+  const handleSmartAdd = async (section, taskData) => {
+    await onAdd(section, taskData);
+    onClose();
   };
 
   return (
     <>
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(6px)", zIndex:200, animation:"backdropIn 0.2s ease" }}/>
-      <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, background:T.bg1, borderRadius:"24px 24px 0 0", border:`1px solid ${T.border}`, padding:"24px 20px 44px", zIndex:201, animation:"slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1)" }}>
-        <div style={{ width:36, height:4, borderRadius:99, background:T.bg3, margin:"0 auto 20px" }}/>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
-          <div><p style={{ fontSize:20, fontWeight:800, color:T.text1, letterSpacing:"-0.4px" }}>New Task</p><p style={{ fontSize:12, color:T.text2, marginTop:2 }}>What do you want to get done?</p></div>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:99, border:`1px solid ${T.border}`, background:T.bg2, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}><X size={15} color={T.text2}/></button>
+      <div
+        onClick={onClose}
+        style={{
+          position:"fixed", inset:0, background:"rgba(0,0,0,0.7)",
+          backdropFilter:"blur(6px)", zIndex:200, animation:"backdropIn 0.2s ease"
+        }}
+      />
+      <div
+        style={{
+          position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
+          width:"100%", maxWidth:430, background:T.bg1, borderRadius:"24px 24px 0 0",
+          border:`1px solid ${T.border}`, padding:"24px 20px 44px",
+          zIndex:201, animation:"slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1)"
+        }}
+      >
+        <div style={{ width:36, height:4, borderRadius:99, background:T.bg3, margin:"0 auto 20px" }} />
+
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
+          <div>
+            <p style={{ fontSize:20, fontWeight:800, color:T.text1, letterSpacing:"-0.4px" }}>New Task</p>
+            <p style={{ fontSize:12, color:T.text2, marginTop:2 }}>What do you want to get done?</p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width:32, height:32, borderRadius:99, border:`1px solid ${T.border}`,
+              background:T.bg2, cursor:"pointer", display:"flex",
+              alignItems:"center", justifyContent:"center"
+            }}
+          >
+            <X size={15} color={T.text2}/>
+          </button>
         </div>
-        <input autoFocus placeholder="Task title..." value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdd()}
-          style={{...iStyle,marginBottom:10,fontSize:16,fontWeight:500}} onFocus={e=>e.target.style.borderColor=T.violetMid} onBlur={e=>e.target.style.borderColor=T.border}/>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-          {[{label:"Duration",el:<select value={dur} onChange={e=>setDur(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>{[5,10,15,20,30,45,60,90,120].map(v=><option key={v} value={v}>{v} min</option>)}</select>},
-            {label:"Category",el:<select value={tag} onChange={e=>setTag(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>{["work","comms","wellness","growth"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}</select>}]
-            .map(({label,el})=>(<div key={label}><p style={{ fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>{label}</p>{el}</div>))}
-        </div>
-        <p style={{ fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Add to</p>
-        <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-          {[{key:"morning",label:"Morning",Icon:Coffee},{key:"afternoon",label:"Afternoon",Icon:Sun},{key:"evening",label:"Evening",Icon:Moon}].map(({key,label,Icon})=>(
-            <button key={key} onClick={()=>setSection(key)} style={{ flex:1, padding:"10px 6px", borderRadius:14, border:section===key?`1.5px solid ${T.violetMid}`:`1px solid ${T.border}`, background:section===key?T.violetSoft:T.bg2, cursor:"pointer", transition:"all 0.18s" }}>
-              <Icon size={14} color={section===key?T.violetMid:T.text3} style={{ margin:"0 auto 4px", display:"block" }}/>
-              <p style={{ fontSize:11, fontWeight:600, color:section===key?T.violetMid:T.text2 }}>{label}</p>
+
+        <div
+          style={{
+            display:"flex",
+            background:T.bg2,
+            borderRadius:14,
+            padding:4,
+            marginBottom:14,
+            border:`1px solid ${T.border}`
+          }}
+        >
+          {[
+            { key:"smart", label:"Smart Input" },
+            { key:"manual", label:"Manual" }
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setMode(key)}
+              style={{
+                flex:1,
+                padding:"10px",
+                borderRadius:11,
+                border:"none",
+                cursor:"pointer",
+                transition:"all 0.2s",
+                background:mode===key ? T.bg1 : "transparent",
+                color:mode===key ? T.text1 : T.text3,
+                fontSize:13,
+                fontWeight:mode===key ? 700 : 500
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>
-        <button onClick={handleAdd} disabled={saving||!title.trim()} style={{ width:"100%", border:"none", borderRadius:16, padding:"15px", background:title.trim()?T.gradViolet:T.bg3, color:title.trim()?"#fff":T.text3, fontSize:15, fontWeight:700, cursor:saving?"not-allowed":"pointer", transition:"all 0.2s", boxShadow:title.trim()?`0 8px 24px ${T.violetGlow}`:"none", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-          {saving&&<Spinner color="#fff"/>}{saving?"Saving...":"Add Task"}
-        </button>
-      </div>
-    </>
-  );
-}
 
-/* ─── RESCHEDULE POPUP ────────────────────────────────────────────────────── */
-function ReschedulePopup({ task, onClose, onManual, onAI }) {
-  const sections = ["morning","afternoon","evening"];
-  const sectionIcons = { morning:Coffee, afternoon:Sun, evening:Moon };
-  const sectionColors = { morning:T.amber, afternoon:T.coral, evening:T.violetMid };
+        {mode === "smart" ? (
+          <NLPTaskInput onAdd={handleSmartAdd} />
+        ) : (
+          <>
+            <input
+              autoFocus
+              placeholder="Task title..."
+              value={title}
+              onChange={e=>setTitle(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleManualAdd()}
+              style={{...iStyle,marginBottom:10,fontSize:16,fontWeight:500}}
+              onFocus={e=>e.target.style.borderColor=T.violetMid}
+              onBlur={e=>e.target.style.borderColor=T.border}
+            />
 
-  return (
-    <>
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", backdropFilter:"blur(6px)", zIndex:200, animation:"backdropIn 0.2s ease" }}/>
-      <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, background:T.bg1, borderRadius:"24px 24px 0 0", border:`1px solid ${T.border}`, padding:"24px 20px 44px", zIndex:201, animation:"slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1)" }}>
-        <div style={{ width:36, height:4, borderRadius:99, background:T.bg3, margin:"0 auto 20px" }}/>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
-          <div>
-            <p style={{ fontSize:20, fontWeight:800, color:T.text1, letterSpacing:"-0.4px" }}>Reschedule task</p>
-            <p style={{ fontSize:12, color:T.text2, marginTop:3 }}>"{task.title}"</p>
-          </div>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:99, border:`1px solid ${T.border}`, background:T.bg2, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}><X size={15} color={T.text2}/></button>
-        </div>
-
-        {/* Manual */}
-        <div style={{ background:T.bg2, borderRadius:18, padding:"16px", border:`1px solid ${T.border}`, marginBottom:10 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-            <div style={{ width:36, height:36, borderRadius:11, background:"rgba(96,165,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <RotateCcw size={17} color="#60A5FA"/>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+              {[
+                {
+                  label:"Duration",
+                  el:(
+                    <select value={dur} onChange={e=>setDur(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>
+                      {[5,10,15,20,30,45,60,90,120].map(v=><option key={v} value={v}>{v} min</option>)}
+                    </select>
+                  )
+                },
+                {
+                  label:"Category",
+                  el:(
+                    <select value={tag} onChange={e=>setTag(e.target.value)} style={{...iStyle,padding:"11px 12px"}}>
+                      {["work","comms","wellness","growth"].map(t=>(
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>
+                      ))}
+                    </select>
+                  )
+                }
+              ].map(({label,el})=>(
+                <div key={label}>
+                  <p style={{ fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
+                    {label}
+                  </p>
+                  {el}
+                </div>
+              ))}
             </div>
-            <div>
-              <p style={{ fontSize:14, fontWeight:700, color:T.text1 }}>Reschedule myself</p>
-              <p style={{ fontSize:12, color:T.text2, marginTop:1 }}>Pick a new time slot</p>
-            </div>
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            {sections.map(s => {
-              const Icon = sectionIcons[s];
-              const color = sectionColors[s];
-              const isCurrent = task.section === s;
-              return (
-                <button key={s} onClick={() => { onManual(task.id, s); onClose(); }}
-                  disabled={isCurrent}
-                  style={{ flex:1, padding:"10px 6px", borderRadius:12, border:isCurrent?`1px solid ${T.border}`:`1px solid ${color}44`, background:isCurrent?T.bg3:`${color}12`, cursor:isCurrent?"not-allowed":"pointer", opacity:isCurrent?0.4:1, transition:"all 0.18s" }}>
-                  <Icon size={14} color={isCurrent?T.text3:color} style={{ margin:"0 auto 4px", display:"block" }}/>
-                  <p style={{ fontSize:11, fontWeight:600, color:isCurrent?T.text3:color, textTransform:"capitalize" }}>{s}</p>
-                  {isCurrent&&<p style={{ fontSize:9, color:T.text3, marginTop:1 }}>current</p>}
+
+            <p style={{ fontSize:11, fontWeight:700, color:T.text3, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>
+              Add to
+            </p>
+
+            <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+              {[
+                {key:"morning",label:"Morning",Icon:Coffee},
+                {key:"afternoon",label:"Afternoon",Icon:Sun},
+                {key:"evening",label:"Evening",Icon:Moon}
+              ].map(({key,label,Icon})=>(
+                <button
+                  key={key}
+                  onClick={()=>setSection(key)}
+                  style={{
+                    flex:1, padding:"10px 6px", borderRadius:14,
+                    border:section===key?`1.5px solid ${T.violetMid}`:`1px solid ${T.border}`,
+                    background:section===key?T.violetSoft:T.bg2,
+                    cursor:"pointer", transition:"all 0.18s"
+                  }}
+                >
+                  <Icon size={14} color={section===key?T.violetMid:T.text3} style={{ margin:"0 auto 4px", display:"block" }}/>
+                  <p style={{ fontSize:11, fontWeight:600, color:section===key?T.violetMid:T.text2 }}>{label}</p>
                 </button>
-              );
-            })}
-          </div>
-        </div>
+              ))}
+            </div>
 
-        {/* AI */}
-        <button onClick={() => { onAI(task); onClose(); }} style={{ display:"flex", alignItems:"center", gap:12, background:T.gradViolet, borderRadius:18, padding:"16px", border:"none", cursor:"pointer", textAlign:"left", width:"100%", boxShadow:`0 8px 24px ${T.violetGlow}`, transition:"all 0.18s" }}
-          onMouseDown={e=>e.currentTarget.style.transform="scale(0.98)"}
-          onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
-          <div style={{ width:40, height:40, borderRadius:13, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-            <Sparkles size={19} color="#fff"/>
-          </div>
-          <div style={{ flex:1 }}>
-            <p style={{ fontSize:14, fontWeight:700, color:"#fff" }}>Let AI decide</p>
-            <p style={{ fontSize:12, color:"rgba(255,255,255,0.65)", marginTop:2, lineHeight:1.4 }}>AI picks the best slot based on your energy & patterns</p>
-          </div>
-          <ChevronRight size={16} color="rgba(255,255,255,0.6)"/>
-        </button>
-
-        <p style={{ fontSize:11, color:T.text3, textAlign:"center", marginTop:14 }}>
-          AI rescheduling uses your behaviour history
-        </p>
+            <button
+              onClick={handleManualAdd}
+              disabled={saving||!title.trim()}
+              style={{
+                width:"100%", border:"none", borderRadius:16, padding:"15px",
+                background:title.trim()?T.gradViolet:T.bg3,
+                color:title.trim()?"#fff":T.text3,
+                fontSize:15, fontWeight:700, cursor:saving?"not-allowed":"pointer",
+                transition:"all 0.2s",
+                boxShadow:title.trim()?`0 8px 24px ${T.violetGlow}`:"none",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:10
+              }}
+            >
+              {saving&&<Spinner color="#fff"/>}
+              {saving?"Saving...":"Add Task"}
+            </button>
+          </>
+        )}
       </div>
     </>
   );
@@ -841,26 +927,15 @@ export default function App() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [showSuggestions,    setShowSuggestions]    = useState(false);
 
-  // Stable refs to avoid stale closures in effects
-  const sessionRef     = useRef(session);
-  const moodRef        = useRef(mood);
-  const userProfileRef = useRef(userProfile);
-  useEffect(() => { sessionRef.current = session; },     [session]);
-  useEffect(() => { moodRef.current = mood; },           [mood]);
-  useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
-
-  // Track whether new-day logic has already run this mount
-  const newDayRan = useRef(false);
-
   /* ── Auth ── */
   useEffect(() => {
     supabase.auth.getSession().then(({data:{session}})=>{ setSession(session); setAuthChecked(true); });
     const {data:{subscription}} = supabase.auth.onAuthStateChange((_,session)=>{
       setSession(session);
-      if (!session) { setTasks({morning:[],afternoon:[],evening:[]}); setOnboardingDone(false); setUserProfile(null); newDayRan.current = false; }
+      if (!session) { setTasks({morning:[],afternoon:[],evening:[]}); setOnboardingDone(false); setUserProfile(null); }
     });
     return ()=>subscription.unsubscribe();
-  },[]); // runs once
+  },[]);
 
   /* ── Onboarding + profile ── */
   useEffect(()=>{
@@ -868,32 +943,21 @@ export default function App() {
     setCheckingOnboarding(true);
     supabase.from("user_profiles").select("*").eq("id",session.user.id).single()
       .then(({data})=>{ setUserProfile(data||null); setOnboardingDone(data?.onboarding_done||false); setCheckingOnboarding(false); });
-  },[session?.user?.id]); // only re-run when user ID changes
+  },[session]);
 
   /* ── Load today's tasks ── */
-  const loadTasks = useCallback(async()=>{
-    const s = sessionRef.current;
-    if (!s?.user) return;
-    setLoadingTasks(true);
-    const rows = await loadTodaysTasks(s.user.id);
-    setTasks(groupBySection(rows));
-    setLoadingTasks(false);
-  },[]); // stable - uses ref
-
   useEffect(()=>{
-    if (session?.user && onboardingDone) loadTasks();
-  },[session?.user?.id, onboardingDone]); // stable primitive dep
+    if (session?.user&&onboardingDone) loadTasks();
+  },[session,onboardingDone]);
 
-  /* ── New day detection + suggestions (runs once per mount when ready) ── */
+  /* ── New day detection + suggestions ── */
   useEffect(()=>{
-    if (!session?.user || !onboardingDone || !userProfile) return;
-    if (newDayRan.current) return;
-    newDayRan.current = true;
+    if (!session?.user||!onboardingDone||!userProfile) return;
     if (isNewDay()) {
       markDayOpened();
       handleNewDay();
     }
-  },[session?.user?.id, onboardingDone, userProfile?.id]); // stable primitive deps
+  },[session, onboardingDone, userProfile]);
 
   /* ── Realtime sync ── */
   useEffect(()=>{
@@ -902,43 +966,49 @@ export default function App() {
       .on("postgres_changes",{event:"*",schema:"public",table:"tasks",filter:`user_id=eq.${session.user.id}`},()=>loadTasks())
       .subscribe();
     return ()=>supabase.removeChannel(channel);
-  },[session?.user?.id]); // stable primitive dep
+  },[session]);
 
   /* ── Push notification init ── */
   useEffect(() => {
     if (!session?.user || !onboardingDone) return;
     initPushNotifications(session.user.id);
-  }, [session?.user?.id, onboardingDone]); // stable primitive dep
+  }, [session, onboardingDone]);
 
   /* ── Re-schedule notifications when tasks change ── */
-  const handleToggleRef = useRef(null);
-  useEffect(() => {
-    const allTasks = Object.values(tasks).flat();
-    if (!allTasks.length) return;
-    scheduleLocalNotifications(
-      tasks,
-      (id, done) => handleToggleRef.current?.(id, done),
-      (task) => {
-        window.__copilotOpen?.();
-        setTimeout(() => {
-          window.__copilotSend?.(`Please reschedule "${task.title}" to the best remaining slot today.`);
-        }, 600);
-      }
-    );
-  }, [tasks]); // only re-run when tasks actually change
+useEffect(() => {
+  const allTasks = Object.values(tasks).flat();
+  if (!allTasks.length) return;
+
+  scheduleLocalNotifications(
+    tasks,
+    handleToggle,
+    (task) => {
+      window.__copilotOpen?.();
+      setTimeout(() => {
+        window.__copilotSend?.(`Please reschedule "${task.title}" to the best remaining slot today.`);
+      }, 600);
+    }
+  );
+}, [tasks]);
+
+
+  const loadTasks = useCallback(async()=>{
+    if (!session?.user) return;
+    setLoadingTasks(true);
+    const rows = await loadTodaysTasks(session.user.id);
+    setTasks(groupBySection(rows));
+    setLoadingTasks(false);
+  },[session]);
 
   const handleNewDay = async () => {
-    const s = sessionRef.current;
-    const profile = userProfileRef.current;
-    if (!s?.user) return;
     setSuggestionsLoading(true);
     setShowSuggestions(true);
     try {
-      let existing = await fetchDailySuggestions(s.user.id);
+      let existing = await fetchDailySuggestions(session.user.id);
       if (!existing || existing.status === "pending") {
         existing = await generateDailySuggestions(
-          s.user.id,
-          profile,
+          session.user.id,
+          userProfile,
           import.meta.env.VITE_GEMINI_KEY
         );
       }
@@ -955,60 +1025,42 @@ export default function App() {
   };
 
   /* ── Handlers ── */
-  const handleToggle = useCallback(async(id, currentDone)=>{
-    const s = sessionRef.current;
-    const m = moodRef.current;
-    setTasks(prev=>{
-      const u={};
-      for(const sec in prev) u[sec]=prev[sec].map(t=>t.id===id?{...t,done:!currentDone}:t);
-      return u;
-    });
+  const handleToggle = async(id, currentDone)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
+    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].map(t=>t.id===id?{...t,done:!currentDone}:t); return u; });
     await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
-    try {
-      const {data} = await supabase.from("tasks").select("*").eq("id",id).single();
-      if (data && s?.user) await logBehaviour(s.user.id, currentDone?"skipped":"completed", data, m);
-    } catch {}
-  },[]); // stable
+    if (task) await logBehaviour(session.user.id, currentDone?"skipped":"completed", task, mood);
+  };
 
-  useEffect(() => { handleToggleRef.current = handleToggle; }, [handleToggle]);
-
-  const handleAdd = useCallback(async(section, taskData)=>{
-    const s = sessionRef.current;
-    const m = moodRef.current;
-    if (!s?.user) return;
+  const handleAdd = async(section, taskData)=>{
+    if (!session?.user) return;
     try {
-      const newTask = await addTaskToday(s.user.id, {...taskData, section});
+      const newTask = await addTaskToday(session.user.id, {...taskData, section});
       setTasks(prev=>({...prev,[section]:[...prev[section],newTask]}));
-      await logBehaviour(s.user.id,"added",newTask,m);
+      await logBehaviour(session.user.id,"added",newTask,mood);
     } catch(e) { console.error("Add task error:", e); }
-  },[]); // stable
+  };
 
-  const handleDelete = useCallback(async(id)=>{
-    const s = sessionRef.current;
-    const m = moodRef.current;
-    setTasks(prev=>{ const u={}; for(const sec in prev) u[sec]=prev[sec].filter(t=>t.id!==id); return u; });
-    const {data:task} = await supabase.from("tasks").select("*").eq("id",id).single();
+  const handleDelete = async(id)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
+    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].filter(t=>t.id!==id); return u; });
     await supabase.from("tasks").delete().eq("id",id);
-    if (task && s?.user) await logBehaviour(s.user.id,"deleted",task,m);
-  },[]); // stable
+    if (task) await logBehaviour(session.user.id,"deleted",task,mood);
+  };
 
-  const handleReschedule = useCallback(async(id, newSection)=>{
-    const s = sessionRef.current;
-    const m = moodRef.current;
-    let movedTask = null;
+  const handleReschedule = async(id, newSection)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
     setTasks(prev=>{
       const u={morning:[],afternoon:[],evening:[]};
-      for(const sec in prev) prev[sec].forEach(t=>{ if(t.id===id){ movedTask=t; u[newSection].push({...t,section:newSection}); } else u[sec].push(t); });
+      for(const s in prev) prev[s].forEach(t=>{ if(t.id===id) u[newSection].push({...t,section:newSection}); else u[s].push(t); });
       return u;
     });
-    await supabase.from("tasks").update({section:newSection,reschedule_count:(movedTask?.reschedule_count||0)+1}).eq("id",id);
-    if (movedTask && s?.user) await logBehaviour(s.user.id,"rescheduled",{...movedTask,section:newSection},m);
-  },[]); // stable
+    await supabase.from("tasks").update({section:newSection,reschedule_count:(task?.reschedule_count||0)+1}).eq("id",id);
+    if (task) await logBehaviour(session.user.id,"rescheduled",{...task,section:newSection},mood);
+  };
 
-  const handleAcceptSuggestions = useCallback(async(picked)=>{
-    const s = sessionRef.current;
-    if (!s?.user) return;
-    const newTasks = await acceptSuggestions(s.user.id, picked);
+  const handleAcceptSuggestions = async(picked)=>{
+    const newTasks = await acceptSuggestions(session.user.id, picked);
     const grouped = groupBySection(newTasks);
     setTasks(prev=>({
       morning:   [...prev.morning,   ...(grouped.morning||[])],
@@ -1017,101 +1069,90 @@ export default function App() {
     }));
     setShowSuggestions(false);
     setSuggestions(null);
-  },[]); // stable
+    for (const t of newTasks) {
+      await logBehaviour(session.user.id,"added",t,mood);
+    }
+  };
 
-  const handleDismissSuggestions = useCallback(async()=>{
-    const s = sessionRef.current;
-    setSuggestions(prev => {
-      if (s?.user && prev?.id) dismissSuggestions(s.user.id, prev.id);
-      return null;
-    });
+  const handleDismissSuggestions = async()=>{
+    await dismissSuggestions(session.user.id);
     setShowSuggestions(false);
-  },[]); // stable
+    setSuggestions(null);
+  };
 
-  const handleCalendarAddTasks = useCallback(async(calTasks)=>{
-    for (const t of calTasks) await handleAdd(t.section||"morning", t);
-  },[handleAdd]);
+  /* ── Calendar: add events as tasks ── */
+  const handleCalendarAddTasks = async (calEvents) => {
+    for (const ev of calEvents) {
+      const { section, title, duration, tag, source, sourceIcon, startTime, htmlLink } = ev;
+      try {
+        const newTask = await addTaskToday(session.user.id, {
+          title, done: false, duration, tag, section,
+          source: source || "google_calendar",
+          sourceIcon: sourceIcon || "📅",
+          startTime: startTime || null,
+          htmlLink: htmlLink || null,
+        });
+        setTasks(prev => ({ ...prev, [section]: [...prev[section], newTask] }));
+        await logBehaviour(session.user.id, "added", newTask, mood);
+      } catch(e) { console.error("Calendar task add error:", e); }
+    }
+  };
 
-  const handleOnboardingComplete = useCallback(async()=>{
-    const s = sessionRef.current;
-    setOnboardingDone(true);
-    setCheckingOnboarding(false);
-    if (!s?.user) return;
-    const {data} = await supabase.from("user_profiles").select("*").eq("id",s.user.id).single();
-    setUserProfile(data||null);
-  },[]); // stable
-
-  const handleSignOut = useCallback(()=>{
-    setSession(null); setOnboardingDone(false); setUserProfile(null); newDayRan.current = false;
-  },[]);
+  const handleOnboardingComplete = async()=>{
+    const {data} = await supabase.from("user_profiles").select("*").eq("id",session.user.id).single();
+    setUserProfile(data); setOnboardingDone(true);
+  };
 
   /* ── Render gates ── */
-  if (!authChecked || (session && checkingOnboarding)) return <LoadingScreen/>;
-  if (!session) return <AuthScreen onAuth={s=>setSession(s)}/>;
-  if (!onboardingDone) return (
-    <Onboarding
-      userId={session.user.id}
-      userEmail={session.user.email}
-      onComplete={handleOnboardingComplete}
-    />
-  );
+  if (!authChecked)       return <LoadingScreen/>;
+  if (!session)           return <AuthScreen onAuth={setSession}/>;
+  if (checkingOnboarding) return <LoadingScreen/>;
+  if (!onboardingDone)    return <Onboarding userId={session.user.id} onComplete={handleOnboardingComplete}/>;
 
-  /* ── Main app ── */
+  const screens = {
+    home:     <HomeView
+                tasks={tasks} onToggle={handleToggle} onReschedule={handleReschedule}
+                mood={mood} setMood={setMood} userProfile={userProfile}
+                suggestions={showSuggestions?suggestions:null}
+                suggestionsLoading={suggestionsLoading}
+                onAcceptSuggestions={handleAcceptSuggestions}
+                onDismissSuggestions={handleDismissSuggestions}
+              />,
+    planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
+    insights: <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>,
+    profile:  <ProfileView
+                userProfile={userProfile}
+                userEmail={session.user.email}
+                onSignOut={()=>setSession(null)}
+                onCalendarAddTasks={handleCalendarAddTasks}
+              />,
+  };
+
   return (
-    <div style={{ fontFamily:"Outfit,sans-serif", background:T.bg0, minHeight:"100vh", maxWidth:430, margin:"0 auto", position:"relative" }}>
+    <>
       <style>{GLOBAL_CSS}</style>
-
-      {/* PWA Install Prompt — shown to all users until installed or dismissed */}
-      <InstallPrompt />
-
-      {/* Scrollable content */}
-      <div style={{ padding:"52px 16px 100px", overflowY:"auto", minHeight:"100vh" }}>
-        {tab==="home"&&(
-          <HomeView
+      <div style={{ minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,-apple-system,sans-serif" }}>
+        <div style={{ width:"100%",maxWidth:430,position:"relative" }}>
+          {loadingTasks&&(
+            <div style={{ position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:99,padding:"8px 16px",display:"flex",alignItems:"center",gap:8,zIndex:50 }}>
+              <Spinner size={14}/><span style={{ fontSize:12,color:T.text2,fontWeight:600 }}>Syncing…</span>
+            </div>
+          )}
+          <div style={{ padding:"52px 16px 90px" }}>
+            {screens[tab]}
+          </div>
+          <AICopilot
+            userId={session?.user?.id}
+            userProfile={userProfile}
             tasks={tasks}
-            onToggle={handleToggle}
-            onReschedule={handleReschedule}
             mood={mood}
-            setMood={setMood}
-            userProfile={userProfile}
-            suggestions={showSuggestions ? suggestions : null}
-            suggestionsLoading={suggestionsLoading}
-            onAcceptSuggestions={handleAcceptSuggestions}
-            onDismissSuggestions={handleDismissSuggestions}
+            onReschedule={handleReschedule}
+            apiKey={GEMINI_KEY}
           />
-        )}
-        {tab==="planner"&&(
-          <PlannerView tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>
-        )}
-        {tab==="insights"&&(
-          <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>
-        )}
-        {tab==="profile"&&(
-          <ProfileView
-            userProfile={userProfile}
-            userEmail={session?.user?.email}
-            onSignOut={handleSignOut}
-            onCalendarAddTasks={handleCalendarAddTasks}
-          />
-        )}
+          <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
+          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
+        </div>
       </div>
-
-      {/* AI Copilot */}
-      <AICopilot
-        tasks={tasks}
-        mood={mood}
-        userProfile={userProfile}
-        userId={session?.user?.id}
-        onToggle={handleToggle}
-        onReschedule={handleReschedule}
-        onAdd={handleAdd}
-      />
-
-      {/* Add task sheet */}
-      {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
-
-      {/* Bottom nav */}
-      <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
-    </div>
+    </>
   );
 }
