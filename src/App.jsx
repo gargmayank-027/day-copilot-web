@@ -1018,16 +1018,6 @@ export default function App() {
       .then(({data})=>{ setUserProfile(data||null); setOnboardingDone(data?.onboarding_done||false); setCheckingOnboarding(false); });
   },[session]);
 
-  /* ── Load today's tasks ── */
-  useEffect(()=>{
-    if (session?.user&&onboardingDone) loadTasks();
-  },[session,onboardingDone,loadTasks]);
-
-  /* ── Load app connections ── */
-  useEffect(()=>{
-    if (session?.user&&onboardingDone) loadConnections();
-  },[session,onboardingDone,loadConnections]);
-
   /* ── New day detection + suggestions ── */
   useEffect(()=>{
     if (!session?.user||!onboardingDone||!userProfile) return;
@@ -1090,6 +1080,16 @@ useEffect(() => {
     setTasks(groupBySection(rows));
     setLoadingTasks(false);
   },[session]);
+
+  /* ── Load today's tasks ── */
+  useEffect(()=>{
+    if (session?.user&&onboardingDone) loadTasks();
+  },[session,onboardingDone,loadTasks]);
+
+  /* ── Load app connections ── */
+  useEffect(()=>{
+    if (session?.user&&onboardingDone) loadConnections();
+  },[session,onboardingDone,loadConnections]);
 
   const handleNewDay = async () => {
     setSuggestionsLoading(true);
