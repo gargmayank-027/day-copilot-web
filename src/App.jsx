@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
@@ -694,26 +694,11 @@ function InsightsView({ tasks, mood, userId }) {
 }
 
 /* ─── PROFILE VIEW ────────────────────────────────────────────────────────── */
-function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, onConnectProvider, connections = [], loadingConnections = false }) {
+function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks }) {
   const [focusDur,setFocusDur]=useState(userProfile?.focus_duration||45);
   const [breakDur,setBreakDur]=useState(10);
   const [notifs,setNotifs]=useState(true);
   const [signingOut,setSigningOut]=useState(false);
-  const [connectingGoogle,setConnectingGoogle]=useState(false);
-
-  const googleConnection = connections?.find((c) => c.provider === "google-calendar");
-  const isGoogleConnected = !!(googleConnection && ["connected","auth_started","active"].includes(googleConnection.status));
-
-  const handleConnectGoogleCalendar = async () => {
-    try {
-      setConnectingGoogle(true);
-      await onConnectProvider?.("google-calendar");
-    } catch (e) {
-      alert(e?.message || "Could not start Google Calendar connection.");
-    } finally {
-      setConnectingGoogle(false);
-    }
-  };
 
   const handleSignOut=async()=>{ setSigningOut(true); await supabase.auth.signOut(); onSignOut(); };
 
@@ -857,14 +842,11 @@ export default function App() {
   const [mood,               setMood]               = useState("neutral");
   const [showAdd,            setShowAdd]            = useState(false);
   const [loadingTasks,       setLoadingTasks]       = useState(false);
-
   const [suggestions,        setSuggestions]        = useState(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [showSuggestions,    setShowSuggestions]    = useState(false);
-  const [connections,        setConnections]        = useState([]);
-  const [loadingConnections, setLoadingConnections] = useState(false);
 
-  // isMutating ref: suppresses realtime reload during local mutations
+  // Suppresses realtime reload during local mutations (toggle/add/delete/reschedule)
   const isMutating = useRef(false);
 
   /* ── Auth ── */
@@ -885,7 +867,7 @@ export default function App() {
       .then(({data})=>{ setUserProfile(data||null); setOnboardingDone(data?.onboarding_done||false); setCheckingOnboarding(false); });
   },[session]);
 
-  /* ── New day detection + suggestions ── */
+  /* ── New day detection ── */
   useEffect(()=>{
     if (!session?.user||!onboardingDone||!userProfile) return;
     if (isNewDay()) { markDayOpened(); handleNewDay(); }
@@ -893,45 +875,41 @@ export default function App() {
 
   const handleNewDay = async () => {
     setSuggestionsLoading(true);
+    setShowSuggestions(true);
     try {
-      let sug = await fetchDailySuggestions(session.user.id);
-      if (!sug) sug = await generateDailySuggestions(session.user.id, userProfile, GEMINI_KEY);
-      setSuggestions(sug);
-    } catch(e) { console.error(e); }
+      let existing = await fetchDailySuggestions(session.user.id);
+      if (!existing || existing.status === "pending") {
+        existing = await generateDailySuggestions(session.user.id, userProfile, import.meta.env.VITE_GEMINI_KEY);
+      }
+      if (existing?.status === "pending") { setSuggestions(existing); }
+      else { setShowSuggestions(false); }
+    } catch(e) { console.error("New day handler error:", e); setShowSuggestions(false); }
     setSuggestionsLoading(false);
   };
 
   /* ── Load tasks ── */
-  const loadTasks = useCallback(async (uid) => {
+  const loadTasks = useCallback(async()=>{
+    if (!session?.user) return;
     setLoadingTasks(true);
-    try {
-      const rows = await loadTodaysTasks(uid);
-      setTasks(groupBySection(rows));
-    } catch(e) { console.error(e); }
+    const rows = await loadTodaysTasks(session.user.id);
+    setTasks(groupBySection(rows));
     setLoadingTasks(false);
-  }, []);
+  },[session]);
 
   useEffect(()=>{
-    if (!session?.user||!onboardingDone) return;
-    loadTasks(session.user.id);
+    if (session?.user&&onboardingDone) loadTasks();
   },[session,onboardingDone]);
 
-  /* ── Realtime subscription ── */
+  /* ── Realtime subscription — only fires when NOT a local mutation ── */
   useEffect(()=>{
     if (!session?.user||!onboardingDone) return;
-    const channel = supabase
-      .channel("tasks-realtime")
-      .on("postgres_changes",{ event:"*", schema:"public", table:"tasks", filter:`user_id=eq.${session.user.id}` },
-        () => {
-          // Only reload from DB if we didn't cause the change locally
-          if (!isMutating.current) {
-            loadTasks(session.user.id);
-          }
-        }
-      )
+    const channel = supabase.channel("tasks-realtime")
+      .on("postgres_changes",{event:"*",schema:"public",table:"tasks",filter:`user_id=eq.${session.user.id}`},()=>{
+        if (!isMutating.current) loadTasks();
+      })
       .subscribe();
-    return () => supabase.removeChannel(channel);
-  },[session,onboardingDone,loadTasks]);
+    return ()=>supabase.removeChannel(channel);
+  },[session,onboardingDone]);
 
   /* ── Notifications ── */
   useEffect(()=>{
@@ -945,154 +923,121 @@ export default function App() {
   },[tasks]);
 
   /* ── Toggle task ── */
-  const handleToggle = useCallback(async (id, done) => {
-    // Optimistic update
-    setTasks(prev => {
-      const next = { ...prev };
-      for (const s of ["morning","afternoon","evening"]) {
-        next[s] = prev[s].map(t => t.id===id ? {...t, done:!done} : t);
-      }
-      return next;
-    });
+  const handleToggle = async(id, currentDone)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
+    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].map(t=>t.id===id?{...t,done:!currentDone}:t); return u; });
     isMutating.current = true;
-    try {
-      await supabase.from("tasks").update({ done: !done }).eq("id", id);
-      if (!done) {
-        logBehaviour(session?.user?.id, "task_completed", { task_id: id });
-      }
-    } catch(e) { console.error(e); }
+    await supabase.from("tasks").update({done:!currentDone}).eq("id",id);
     isMutating.current = false;
-  }, [session]);
+    if (task) await logBehaviour(session.user.id, currentDone?"skipped":"completed", task, mood);
+  };
 
   /* ── Add task ── */
-  const handleAdd = useCallback(async (section, taskData) => {
-    isMutating.current = true;
+  const handleAdd = async(section, taskData)=>{
+    if (!session?.user) return;
     try {
-      const { data } = await addTaskToday(session.user.id, { ...taskData, section });
-      if (data) {
-        setTasks(prev => ({ ...prev, [section]: [...prev[section], data] }));
-      }
-    } catch(e) { console.error(e); }
-    isMutating.current = false;
-  }, [session]);
+      isMutating.current = true;
+      const newTask = await addTaskToday(session.user.id, {...taskData, section});
+      isMutating.current = false;
+      setTasks(prev=>({...prev,[section]:[...prev[section],newTask]}));
+      await logBehaviour(session.user.id,"added",newTask,mood);
+    } catch(e) { isMutating.current = false; console.error("Add task error:", e); }
+  };
 
   /* ── Delete task ── */
-  const handleDelete = useCallback(async (id) => {
-    setTasks(prev => {
-      const next = { ...prev };
-      for (const s of ["morning","afternoon","evening"]) {
-        next[s] = prev[s].filter(t => t.id !== id);
-      }
-      return next;
-    });
+  const handleDelete = async(id)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
+    setTasks(prev=>{ const u={}; for(const s in prev) u[s]=prev[s].filter(t=>t.id!==id); return u; });
     isMutating.current = true;
-    try {
-      await supabase.from("tasks").delete().eq("id", id);
-    } catch(e) { console.error(e); }
+    await supabase.from("tasks").delete().eq("id",id);
     isMutating.current = false;
-  }, []);
+    if (task) await logBehaviour(session.user.id,"deleted",task,mood);
+  };
 
   /* ── Reschedule task ── */
-  const handleReschedule = useCallback(async (id, newSection) => {
-    let task = null;
-    setTasks(prev => {
-      const next = { morning:[...prev.morning], afternoon:[...prev.afternoon], evening:[...prev.evening] };
-      for (const s of ["morning","afternoon","evening"]) {
-        const idx = next[s].findIndex(t=>t.id===id);
-        if (idx !== -1) { task = {...next[s][idx], section:newSection}; next[s].splice(idx,1); break; }
-      }
-      if (task) next[newSection] = [...next[newSection], task];
-      return next;
+  const handleReschedule = async(id, newSection)=>{
+    const task = flatTasks(tasks).find(t=>t.id===id);
+    setTasks(prev=>{
+      const u={morning:[],afternoon:[],evening:[]};
+      for(const s in prev) prev[s].forEach(t=>{ if(t.id===id) u[newSection].push({...t,section:newSection}); else u[s].push(t); });
+      return u;
     });
     isMutating.current = true;
-    try {
-      await supabase.from("tasks").update({ section: newSection }).eq("id", id);
-    } catch(e) { console.error(e); }
+    await supabase.from("tasks").update({section:newSection,reschedule_count:(task?.reschedule_count||0)+1}).eq("id",id);
     isMutating.current = false;
-  }, []);
+    if (task) await logBehaviour(session.user.id,"rescheduled",{...task,section:newSection},mood);
+  };
 
-  /* ── Calendar add tasks ── */
-  const handleCalendarAddTasks = useCallback(async (calTasks) => {
-    for (const t of calTasks) {
-      await handleAdd(t.section || "morning", t);
+  /* ── Suggestions ── */
+  const handleAcceptSuggestions = async(picked)=>{
+    const newTasks = await acceptSuggestions(session.user.id, picked);
+    const grouped = groupBySection(newTasks);
+    setTasks(prev=>({ morning:[...prev.morning,...(grouped.morning||[])], afternoon:[...prev.afternoon,...(grouped.afternoon||[])], evening:[...prev.evening,...(grouped.evening||[])] }));
+    setShowSuggestions(false); setSuggestions(null);
+    for (const t of newTasks) await logBehaviour(session.user.id,"added",t,mood);
+  };
+
+  const handleDismissSuggestions = async()=>{
+    await dismissSuggestions(session.user.id);
+    setShowSuggestions(false); setSuggestions(null);
+  };
+
+  /* ── Calendar ── */
+  const handleCalendarAddTasks = async (calEvents) => {
+    for (const ev of calEvents) {
+      const { section, title, duration, tag, source, sourceIcon, startTime, htmlLink } = ev;
+      try {
+        const newTask = await addTaskToday(session.user.id, { title, done:false, duration, tag, section, source:source||"google_calendar", sourceIcon:sourceIcon||"📅", startTime:startTime||null, htmlLink:htmlLink||null });
+        setTasks(prev => ({ ...prev, [section]: [...prev[section], newTask] }));
+        await logBehaviour(session.user.id, "added", newTask, mood);
+      } catch(e) { console.error("Calendar task add error:", e); }
     }
-  }, [handleAdd]);
+  };
 
-  /* ── Accept/dismiss suggestions ── */
-  const handleAcceptSuggestions = useCallback(async () => {
-    if (!suggestions) return;
-    const added = await acceptSuggestions(session.user.id, suggestions);
-    if (added?.length) {
-      setTasks(prev => {
-        const next = { ...prev };
-        added.forEach(t => { next[t.section] = [...(next[t.section]||[]), t]; });
-        return next;
-      });
-    }
-    setSuggestions(null);
-  }, [suggestions, session]);
+  const handleOnboardingComplete = async()=>{
+    const {data} = await supabase.from("user_profiles").select("*").eq("id",session.user.id).single();
+    setUserProfile(data); setOnboardingDone(true);
+  };
 
-  const handleDismissSuggestions = useCallback(async () => {
-    if (suggestions?.id) await dismissSuggestions(suggestions.id);
-    setSuggestions(null);
-  }, [suggestions]);
+  /* ── Render gates ── */
+  if (!authChecked)       return <LoadingScreen/>;
+  if (!session)           return <AuthScreen onAuth={setSession}/>;
+  if (checkingOnboarding) return <LoadingScreen/>;
+  if (!onboardingDone)    return <Onboarding userId={session.user.id} onComplete={handleOnboardingComplete}/>;
 
-  /* ── Sign out ── */
-  const handleSignOut = useCallback(() => {
-    setSession(null); setOnboardingDone(false); setUserProfile(null);
-    setTasks({morning:[],afternoon:[],evening:[]});
-  }, []);
-
-  /* ── Connect provider (Nango / calendar) ── */
-  const handleConnectProvider = useCallback(async (provider) => {
-    setLoadingConnections(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("nango-connect", { body: { provider, userId: session.user.id } });
-      if (error) throw error;
-      if (data?.authUrl) window.open(data.authUrl, "_blank");
-    } catch(e) { throw e; }
-    setLoadingConnections(false);
-  }, [session]);
-
-  /* ── Render guards ── */
-  if (!authChecked || checkingOnboarding) return <LoadingScreen/>;
-  if (!session) return <AuthScreen onAuth={s => { setSession(s); setAuthChecked(true); }}/>;
-  if (!onboardingDone) return (
-    <>
-      <style>{GLOBAL_CSS}</style>
-      <Onboarding userId={session.user.id} onComplete={(profile) => { setUserProfile(profile); setOnboardingDone(true); }}/>
-    </>
-  );
-
-  const syncing = loadingTasks && !isMutating.current;
+  const screens = {
+    home: <HomeView tasks={tasks} onToggle={handleToggle} onReschedule={handleReschedule} mood={mood} setMood={setMood} userProfile={userProfile} suggestions={showSuggestions?suggestions:null} suggestionsLoading={suggestionsLoading} onAcceptSuggestions={handleAcceptSuggestions} onDismissSuggestions={handleDismissSuggestions}/>,
+    planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
+    insights: <InsightsView tasks={tasks} mood={mood} userId={session.user.id}/>,
+    profile:  <ProfileView  userProfile={userProfile} userEmail={session.user.email} onSignOut={()=>setSession(null)} onCalendarAddTasks={handleCalendarAddTasks}/>,
+  };
 
   return (
-    <div style={{ fontFamily:"Outfit,sans-serif", background:T.bg0, minHeight:"100vh", color:T.text1 }}>
+    <>
       <style>{GLOBAL_CSS}</style>
-
-      {/* ── Top bar ── */}
-      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, zIndex:90, padding:"12px 20px 8px", background:"rgba(9,9,15,0.85)", backdropFilter:"blur(16px)", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:28, borderRadius:9, background:T.gradViolet, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 12px ${T.violetGlow}` }}>
-            <Zap size={14} color="#fff" strokeWidth={2.5}/>
-          </div>
-          <span style={{ fontSize:15, fontWeight:800, color:T.text1, letterSpacing:"-0.3px" }}>Day Copilot</span>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          {syncing && (
-            <div style={{ display:"flex", alignItems:"center", gap:5, background:T.violetSoft, borderRadius:99, padding:"4px 10px" }}>
-              <Spinner size={12} color={T.violetMid}/>
-              <span style={{ fontSize:11, fontWeight:600, color:T.violetMid }}>Syncing</span>
+      <div style={{ minHeight:"100vh",background:T.bg0,display:"flex",justifyContent:"center",fontFamily:"Outfit,-apple-system,sans-serif" }}>
+        <div style={{ width:"100%",maxWidth:430,position:"relative" }}>
+          {/* Syncing pill — only show on initial load or genuine external sync, NOT during local mutations */}
+          {loadingTasks&&!isMutating.current&&(
+            <div style={{ position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:T.bg2,border:`1px solid ${T.border}`,borderRadius:99,padding:"8px 16px",display:"flex",alignItems:"center",gap:8,zIndex:50 }}>
+              <Spinner size={14}/><span style={{ fontSize:12,color:T.text2,fontWeight:600 }}>Syncing…</span>
             </div>
           )}
-          <button
-            onClick={() => window.__copilotOpen?.()}
-            style={{ width:34, height:34, borderRadius:11, border:`1px solid ${T.border}`, background:T.bg2, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-          >
-            <Bot size={16} color={T.violetMid}/>
-          </button>
+          <div style={{ padding:"52px 16px 90px" }}>
+            {screens[tab]}
+          </div>
+          <AICopilot
+            userId={session?.user?.id}
+            userProfile={userProfile}
+            tasks={tasks}
+            mood={mood}
+            onReschedule={handleReschedule}
+            apiKey={GEMINI_KEY}
+          />
+          <BottomNav active={tab} setActive={setTab} onPlus={()=>setShowAdd(true)}/>
+          {showAdd&&<AddTaskSheet onClose={()=>setShowAdd(false)} onAdd={handleAdd}/>}
         </div>
       </div>
-
-      {/* ── Main content ── */}
-      <div style={{ maxWidth:430, margin:"0 auto", padding:"80px 1
+    </>
+  );
+}
