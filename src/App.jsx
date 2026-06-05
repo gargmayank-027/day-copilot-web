@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
-  Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
-  BarChart2, User, Zap, Target, Sun, Moon, Flame,
-  TrendingUp, Award, Coffee, X, Battery,
-  Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff,
-  AlertTriangle, RotateCcw, Sparkles, Bot, History
+  Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar, BarChart2, User,
+  Zap, Target, Sun, Moon, Flame, TrendingUp, Award, Coffee, X, Battery,
+  Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff, AlertTriangle,
+  RotateCcw, Sparkles, Bot, History, Link2
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
@@ -872,10 +871,22 @@ function InsightsView({ tasks, mood, userId }) {
 }
 
 /* ─── PROFILE VIEW ────────────────────────────────────────────────────────── */
-function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks }) {
+function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, onConnectProvider }) {
   const [focusDur,setFocusDur]=useState(userProfile?.focus_duration||45);
   const [breakDur,setBreakDur]=useState(10);
   const [notifs,setNotifs]=useState(true);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+
+  const handleConnectGoogleCalendar = async () => {
+    try {
+      setConnectingGoogle(true);
+      await onConnectProvider("google-calendar");
+    } catch (e) {
+      alert(e?.message || "Could not start Google Calendar connection.");
+    } finally {
+      setConnectingGoogle(false);
+    }
+  };
   const [signingOut,setSigningOut]=useState(false);
   const handleSignOut=async()=>{ setSigningOut(true); await supabase.auth.signOut(); onSignOut(); };
 
@@ -901,6 +912,68 @@ function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks }) 
           </div>
         ))}
       </div>
+
+      <Card>
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <Link2 size={13} color={T.text2} strokeWidth={2} />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: T.text2,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              App Connections
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "12px 0",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>
+                Google Calendar via Nango
+              </p>
+              <p style={{ fontSize: 12, color: T.text2, marginTop: 4 }}>
+                Connect your Google Calendar account to sync events into Day Copilot.
+              </p>
+            </div>
+
+            <button
+              onClick={handleConnectGoogleCalendar}
+              disabled={connectingGoogle}
+              style={{
+                border: "none",
+                borderRadius: 12,
+                padding: "10px 14px",
+                background: T.gradViolet,
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: connectingGoogle ? "not-allowed" : "pointer",
+                opacity: connectingGoogle ? 0.8 : 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexShrink: 0,
+                boxShadow: `0 8px 24px ${T.violetGlow}`,
+              }}
+            >
+              {connectingGoogle ? <Spinner color="#fff" size={14} /> : null}
+              {connectingGoogle ? "Connecting..." : "Connect"}
+            </button>
+          </div>
+        </div>
+      </Card>
 
       {/* ── Google Calendar Integration ── */}
       <div style={{ marginBottom:4 }}>
@@ -1203,6 +1276,22 @@ useEffect(() => {
     setUserProfile(data); setOnboardingDone(true);
   };
 
+  const handleConnectProvider = async (provider) => {
+    const { data, error } = await supabase.functions.invoke("connect-provider", {
+      body: { provider },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.connectUrl) {
+      throw new Error("No connect URL returned from server.");
+    }
+
+    window.location.href = data.connectUrl;
+  };
+
   /* ── Render gates ── */
   if (!authChecked)       return <LoadingScreen/>;
   if (!session)           return <AuthScreen onAuth={setSession}/>;
@@ -1220,12 +1309,15 @@ useEffect(() => {
               />,
     planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
     insights: <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>,
-    profile:  <ProfileView
-                userProfile={userProfile}
-                userEmail={session.user.email}
-                onSignOut={()=>setSession(null)}
-                onCalendarAddTasks={handleCalendarAddTasks}
-              />,
+    profile: (
+      <ProfileView
+        userProfile={userProfile}
+        userEmail={session.user.email}
+        onSignOut={() => setSession(null)}
+        onCalendarAddTasks={handleCalendarAddTasks}
+        onConnectProvider={handleConnectProvider}
+      />
+    ),
   };
 
   return (
