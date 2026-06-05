@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
