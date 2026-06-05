@@ -11,7 +11,6 @@ import Onboarding from "./Onboarding";
 import AICopilot from "./AICopilot";
 import { logBehaviour } from "./behaviourTracker";
 import MorningSuggestions from "./MorningSuggestions";
-import CalendarIntegration from "./CalendarIntegration";
 import {
   isNewDay, markDayOpened, loadTodaysTasks, addTaskToday,
   fetchDailySuggestions, generateDailySuggestions,
@@ -863,7 +862,64 @@ function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, on
           <Calendar size={13} color={T.text2} strokeWidth={2}/>
           <span style={{ fontSize:11, fontWeight:700, color:T.text2, letterSpacing:"0.08em", textTransform:"uppercase" }}>Integrations</span>
         </div>
-        <CalendarIntegration onAddTasks={onCalendarAddTasks}/>
+        <Card style={{ padding:"18px 16px 16px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
+            <div style={{ width:44, height:44, borderRadius:14, background:"rgba(59,130,246,0.14)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Calendar size={22} color="#60A5FA" />
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ fontSize:15, fontWeight:800, color:T.text1 }}>Google Calendar</p>
+              <p style={{ fontSize:12, color:T.text2, marginTop:3 }}>Auto-import today's events as tasks</p>
+            </div>
+            {isGoogleConnected ? <CheckCircle size={18} color={T.green} /> : <ChevronRight size={18} color={T.text3} />}
+          </div>
+
+          <button
+            onClick={isGoogleConnected ? undefined : handleConnectGoogleCalendar}
+            disabled={connectingGoogle || loadingConnections || isGoogleConnected}
+            style={{
+              width:"100%",
+              border:"none",
+              borderRadius:18,
+              padding:"16px 18px",
+              background:isGoogleConnected ? "linear-gradient(135deg,#10B981 0%,#059669 100%)" : T.gradViolet,
+              color:"#fff",
+              fontSize:15,
+              fontWeight:800,
+              cursor:connectingGoogle || loadingConnections || isGoogleConnected ? "not-allowed" : "pointer",
+              display:"flex",
+              alignItems:"center",
+              justifyContent:"center",
+              gap:10,
+              opacity:connectingGoogle || loadingConnections ? 0.85 : 1,
+              boxShadow:isGoogleConnected ? "0 12px 28px rgba(16,185,129,0.28)" : `0 12px 28px ${T.violetGlow}`,
+              marginBottom:12
+            }}
+          >
+            {loadingConnections ? (
+              <Spinner color="#fff" size={16} />
+            ) : connectingGoogle ? (
+              <Spinner color="#fff" size={16} />
+            ) : isGoogleConnected ? (
+              <CheckCircle size={18} color="#fff" />
+            ) : (
+              <ChevronRight size={18} color="#fff" />
+            )}
+            {loadingConnections
+              ? "Checking Google Calendar..."
+              : connectingGoogle
+              ? "Connecting..."
+              : isGoogleConnected
+              ? "Google Calendar Connected"
+              : "Connect Google Calendar"}
+          </button>
+
+          <p style={{ textAlign:"center", fontSize:11, color:isGoogleConnected ? T.green : T.text3, fontWeight:600 }}>
+            {isGoogleConnected
+              ? "Connection found in Nango and synced to your account"
+              : "Read-only access · Events stay private"}
+          </p>
+        </Card>
       </div>
 
       {userProfile?.work_start&&(
@@ -1046,6 +1102,22 @@ useEffect(() => {
   );
 }, [tasks]);
 
+
+  const loadConnections = useCallback(async () => {
+    if (!session?.user) return;
+    setLoadingConnections(true);
+
+    const { data, error } = await supabase
+      .from("app_connections")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) console.error("Load connections error:", error);
+    else setConnections(data || []);
+
+    setLoadingConnections(false);
+  }, [session]);
 
   const loadTasks = useCallback(async()=>{
     if (!session?.user) return;
