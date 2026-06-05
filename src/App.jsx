@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar, BarChart2, User,
-  Zap, Target, Sun, Moon, Flame, TrendingUp, Award, Coffee, X, Battery,
-  Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff, AlertTriangle,
-  RotateCcw, Sparkles, Bot, History, Link2
+  Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
+  BarChart2, User, Zap, Target, Sun, Moon, Flame,
+  TrendingUp, Award, Coffee, X, Battery,
+  Wind, ChevronRight, LogOut, Mail, Lock, Eye, EyeOff,
+  AlertTriangle, RotateCcw, Sparkles, Bot, History
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import Onboarding from "./Onboarding";
@@ -408,64 +409,19 @@ function AddTaskSheet({ onClose, onAdd }) {
         </div>
 
         {mode === "smart" ? (
-  <>
-    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-      <button
-        type="button"
-        onClick={toggleVoiceInput}
-        disabled={!voiceSupported}
-        style={{
-          flexShrink: 0,
-          border: "none",
-          borderRadius: 14,
-          padding: "13px 14px",
-          background: isListening ? T.redSoft : T.violetSoft,
-          color: isListening ? T.red : T.violetMid,
-          fontSize: 14,
-          fontWeight: 700,
-          cursor: voiceSupported ? "pointer" : "not-allowed",
-          opacity: voiceSupported ? 1 : 0.5,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          minWidth: 120,
-        }}
-      >
-        {isListening ? "🎙️ Listening..." : "🎤 Voice Input"}
-      </button>
-
-      <input
-        autoFocus
-        placeholder={voiceSupported ? "Speak or type your task..." : "Type your task..."}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        style={{ ...iStyle, marginBottom: 0, flex: 1, fontSize: 15 }}
-        onFocus={(e) => (e.target.style.borderColor = T.violetMid)}
-        onBlur={(e) => (e.target.style.borderColor = T.border)}
-      />
-    </div>
-
-    <NLPTaskInput
-      initialValue={input}
-      onAdd={async (section, taskData) => {
-        await handleSmartAdd(section, taskData);
-        setInput("");
-      }}
-    />
-  </>
-) : (
-  <>
-    <input
-      autoFocus
-      placeholder="Task title..."
-      value={title}
-      onChange={(e) => setTitle(e.target.value)}
-      onKeyDown={(e) => e.key === "Enter" && handleManualAdd()}
-      style={{ ...iStyle, marginBottom: 10, fontSize: 16, fontWeight: 500 }}
-      onFocus={(e) => (e.target.style.borderColor = T.violetMid)}
-      onBlur={(e) => (e.target.style.borderColor = T.border)}
-    />
+          <NLPTaskInput onAdd={handleSmartAdd} />
+        ) : (
+          <>
+            <input
+              autoFocus
+              placeholder="Task title..."
+              value={title}
+              onChange={e=>setTitle(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleManualAdd()}
+              style={{...iStyle,marginBottom:10,fontSize:16,fontWeight:500}}
+              onFocus={e=>e.target.style.borderColor=T.violetMid}
+              onBlur={e=>e.target.style.borderColor=T.border}
+            />
 
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
               {[
@@ -871,22 +827,10 @@ function InsightsView({ tasks, mood, userId }) {
 }
 
 /* ─── PROFILE VIEW ────────────────────────────────────────────────────────── */
-function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, onConnectProvider }) {
+function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, onConnectProvider, connections = [], loadingConnections = false }) {
   const [focusDur,setFocusDur]=useState(userProfile?.focus_duration||45);
   const [breakDur,setBreakDur]=useState(10);
   const [notifs,setNotifs]=useState(true);
-  const [connectingGoogle, setConnectingGoogle] = useState(false);
-
-  const handleConnectGoogleCalendar = async () => {
-    try {
-      setConnectingGoogle(true);
-      await onConnectProvider("google-calendar");
-    } catch (e) {
-      alert(e?.message || "Could not start Google Calendar connection.");
-    } finally {
-      setConnectingGoogle(false);
-    }
-  };
   const [signingOut,setSigningOut]=useState(false);
   const handleSignOut=async()=>{ setSigningOut(true); await supabase.auth.signOut(); onSignOut(); };
 
@@ -912,68 +856,6 @@ function ProfileView({ userProfile, userEmail, onSignOut, onCalendarAddTasks, on
           </div>
         ))}
       </div>
-
-      <Card>
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Link2 size={13} color={T.text2} strokeWidth={2} />
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: T.text2,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              App Connections
-            </span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              padding: "12px 0",
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>
-                Google Calendar via Nango
-              </p>
-              <p style={{ fontSize: 12, color: T.text2, marginTop: 4 }}>
-                Connect your Google Calendar account to sync events into Day Copilot.
-              </p>
-            </div>
-
-            <button
-              onClick={handleConnectGoogleCalendar}
-              disabled={connectingGoogle}
-              style={{
-                border: "none",
-                borderRadius: 12,
-                padding: "10px 14px",
-                background: T.gradViolet,
-                color: "#fff",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: connectingGoogle ? "not-allowed" : "pointer",
-                opacity: connectingGoogle ? 0.8 : 1,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexShrink: 0,
-                boxShadow: `0 8px 24px ${T.violetGlow}`,
-              }}
-            >
-              {connectingGoogle ? <Spinner color="#fff" size={14} /> : null}
-              {connectingGoogle ? "Connecting..." : "Connect"}
-            </button>
-          </div>
-        </div>
-      </Card>
 
       {/* ── Google Calendar Integration ── */}
       <div style={{ marginBottom:4 }}>
@@ -1276,14 +1158,20 @@ useEffect(() => {
     setUserProfile(data); setOnboardingDone(true);
   };
 
+  /* ── Render gates ── */
+  if (!authChecked)       return <LoadingScreen/>;
+  if (!session)           return <AuthScreen onAuth={setSession}/>;
+  if (checkingOnboarding) return <LoadingScreen/>;
+  if (!onboardingDone)    return <Onboarding userId={session.user.id} onComplete={handleOnboardingComplete}/>;
+
   const handleConnectProvider = async (provider) => {
     const { data, error } = await supabase.functions.invoke("connect-provider", {
       body: { provider },
     });
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
+
+    await loadConnections();
 
     if (!data?.connectUrl) {
       throw new Error("No connect URL returned from server.");
@@ -1291,12 +1179,6 @@ useEffect(() => {
 
     window.location.href = data.connectUrl;
   };
-
-  /* ── Render gates ── */
-  if (!authChecked)       return <LoadingScreen/>;
-  if (!session)           return <AuthScreen onAuth={setSession}/>;
-  if (checkingOnboarding) return <LoadingScreen/>;
-  if (!onboardingDone)    return <Onboarding userId={session.user.id} onComplete={handleOnboardingComplete}/>;
 
   const screens = {
     home:     <HomeView
@@ -1309,15 +1191,12 @@ useEffect(() => {
               />,
     planner:  <PlannerView  tasks={tasks} onToggle={handleToggle} onDelete={handleDelete}/>,
     insights: <InsightsView tasks={tasks} mood={mood} userId={session?.user?.id}/>,
-    profile: (
-      <ProfileView
-        userProfile={userProfile}
-        userEmail={session.user.email}
-        onSignOut={() => setSession(null)}
-        onCalendarAddTasks={handleCalendarAddTasks}
-        onConnectProvider={handleConnectProvider}
-      />
-    ),
+    profile:  <ProfileView
+                userProfile={userProfile}
+                userEmail={session.user.email}
+                onSignOut={()=>setSession(null)}
+                onCalendarAddTasks={handleCalendarAddTasks}
+              />,
   };
 
   return (
