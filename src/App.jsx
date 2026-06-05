@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Smile, Meh, Frown, CheckCircle, Clock, Plus, Calendar,
   BarChart2, User, Zap, Target, Sun, Moon, Flame,
@@ -244,6 +244,10 @@ function MomentumBar({ pct }) {
 
 /* ─── ADD TASK SHEET ──────────────────────────────────────────────────────── */
 function AddTaskSheet({ onClose, onAdd }) {
+  const [input, setInput] = useState("");
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
   const [mode, setMode] = useState("smart");
   const [title,setTitle]=useState("");
   const [dur,setDur]=useState("20");
@@ -281,6 +285,57 @@ function AddTaskSheet({ onClose, onAdd }) {
     await onAdd(section, taskData);
     onClose();
   };
+
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceSupported(false);
+      return;
+    }
+
+    setVoiceSupported(true);
+
+    const recognition = new SR();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((r) => r[0]?.transcript || "")
+        .join(" ")
+        .trim();
+
+      setInput(transcript);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  function toggleVoiceInput() {
+    if (!recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+    }
+  }
 
   return (
     <>
@@ -354,19 +409,64 @@ function AddTaskSheet({ onClose, onAdd }) {
         </div>
 
         {mode === "smart" ? (
-          <NLPTaskInput onAdd={handleSmartAdd} />
-        ) : (
-          <>
-            <input
-              autoFocus
-              placeholder="Task title..."
-              value={title}
-              onChange={e=>setTitle(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleManualAdd()}
-              style={{...iStyle,marginBottom:10,fontSize:16,fontWeight:500}}
-              onFocus={e=>e.target.style.borderColor=T.violetMid}
-              onBlur={e=>e.target.style.borderColor=T.border}
-            />
+  <>
+    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+      <button
+        type="button"
+        onClick={toggleVoiceInput}
+        disabled={!voiceSupported}
+        style={{
+          flexShrink: 0,
+          border: "none",
+          borderRadius: 14,
+          padding: "13px 14px",
+          background: isListening ? T.redSoft : T.violetSoft,
+          color: isListening ? T.red : T.violetMid,
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: voiceSupported ? "pointer" : "not-allowed",
+          opacity: voiceSupported ? 1 : 0.5,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          minWidth: 120,
+        }}
+      >
+        {isListening ? "🎙️ Listening..." : "🎤 Voice Input"}
+      </button>
+
+      <input
+        autoFocus
+        placeholder={voiceSupported ? "Speak or type your task..." : "Type your task..."}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        style={{ ...iStyle, marginBottom: 0, flex: 1, fontSize: 15 }}
+        onFocus={(e) => (e.target.style.borderColor = T.violetMid)}
+        onBlur={(e) => (e.target.style.borderColor = T.border)}
+      />
+    </div>
+
+    <NLPTaskInput
+      initialValue={input}
+      onAdd={async (section, taskData) => {
+        await handleSmartAdd(section, taskData);
+        setInput("");
+      }}
+    />
+  </>
+) : (
+  <>
+    <input
+      autoFocus
+      placeholder="Task title..."
+      value={title}
+      onChange={(e) => setTitle(e.target.value)}
+      onKeyDown={(e) => e.key === "Enter" && handleManualAdd()}
+      style={{ ...iStyle, marginBottom: 10, fontSize: 16, fontWeight: 500 }}
+      onFocus={(e) => (e.target.style.borderColor = T.violetMid)}
+      onBlur={(e) => (e.target.style.borderColor = T.border)}
+    />
 
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
               {[
